@@ -1,0 +1,65 @@
+algorithm.pAR.default: 
+  i.D      : ar.d.txt.gz
+  i.Pt     : ar.pt.txt.gz
+  i.Y      : ar.y.txt.gz
+  args.seed: 8525
+  o.W      : default.W.txt
+algorithm.pAR.paper: 
+  i.D       : motif_hits.txt
+  i.Pt      : protein_expression_t.txt
+  i.Y       : gene_expression.txt
+  args.seed : 8525
+  args.tfrac: .472
+  args.svdP : 25 # may have some issues with svd in R
+  o.W       : paper.W.txt
+snp.pRs2Bed.default:
+  args.inopts.cnames: False
+  args.tool         : local
+  i.snpfile         : snps.txt
+  o.outfile         : snps.bed
+  opt1.cnames       : False
+  opt2.cnames       : False
+snp.pRs2Bed.cruzdb:
+  args.inopts.cnames: False
+  args.tool         : cruzdb
+  i.snpfile         : snps.txt
+  o.outfile         : snps.cruzdb.bed
+  opt1.cnames       : False
+  opt2.cnames       : False
+mlearn.pCrossValid.default:
+  i.infile: crossvalid.txt
+  args.seed        : 998
+  args.train.method: rf
+  args.train.form  : Class ~ .
+  args.ctrl.method : cv
+  args.ctrl.number : 10
+  o.{outdir}/crossvalid.aucs.txt: crossvalid.aucs.txt
+plot.pHeatmap2.default:
+  i.infile: mat.default.txt
+  args.devpars.res: 70
+  args.devpars.height: 500
+  args.devpars.width: 500
+  o.outfile: mat.default.heatmap.png
+plot.pHeatmap2.annotate:
+  i.infile: mat.default.txt
+  i.annofiles:
+    - mat.anno.txt
+  args.seed: 8525
+  args.devpars.res: 70
+  args.devpars.height: 500
+  args.devpars.width: 500
+  args.params.top_annotation: r:HeatmapAnnotation(foo = annos$foo, bar = as.matrix(annos[, c('bar1', 'bar2')]), pt = anno_points(annos$pt), show_legend = TRUE, show_annotation_name = TRUE)
+  o.outfile: mat.annotate.heatmap.png
+plot.pHeatmap2.multianno:
+  i.infile: mat.default.txt
+  i.annofiles:
+    - mat.anno.txt
+    - mat.ranno.txt
+  args.seed: 8525
+  args.devpars.res: 70
+  args.devpars.height: 500
+  args.devpars.width: 500
+  args.params.top_annotation: r:HeatmapAnnotation(foo = annos[[1]]$foo, bar = as.matrix(annos[[1]][, c('bar1', 'bar2')]), pt = anno_points(annos[[1]]$pt), show_legend = TRUE, show_annotation_name = TRUE)
+  args.params.right_annotation: r:rowAnnotation(rowanno = anno_lines(as.matrix(annos[[2]]$rowanno)))
+  o.outfile: mat.multianno.heatmap.png
+  

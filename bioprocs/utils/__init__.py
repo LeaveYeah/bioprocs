@@ -3,13 +3,11 @@ import logging
 import sys
 import shlex
 import re
-from pyppl.utils import cmd
 from glob import glob
 from os import path
-from collections import OrderedDict
-
-class RuncmdException(Exception):
-	pass
+# deprecate, will be removed later
+# use "from bioprocs.utils.shell import ..."
+from .shell import RuncmdException, runcmd, cmdargs
 
 class Mem2Exception(Exception):
 	pass
@@ -53,100 +51,6 @@ def alwaysList(l):
 		ret = [x.strip() for x in l.split(',') if x.strip()]
 	return ret
 
-def runcmd(cmd2run, shell = True, quit = True):
-	c = cmd.Cmd(cmd2run, shell = shell)
-	cmdstr = ' '.join(c.cmd) if isinstance(c.cmd, list) else c.cmd
-	logger.info('Running command at PID: %s' % c.pid)
-	logger.info(cmdstr)
-	#c.run()
-	#for line in c.stderr.splitlines():
-	while c.p.poll() is None:
-		line = c.p.stderr.readline()
-		if not line:
-			continue
-		logger.error('STDERR: {}'.format(line.rstrip()))
-	c.rc = c.p.poll()
-	logger.info('-'*80)
-	logger.info('Return code: %s' % c.rc)
-	if quit and c.rc != 0:
-		raise RuncmdException('Command failed to run:\n{}\n'.format(cmdstr))
-	return c.rc == 0
-
-def call(command, args, quit = True):
-	bioprocs = path.join(path.realpath(path.dirname(path.dirname(path.dirname(__file__)))), 'bin', 'bioprocs')
-	if not isinstance(args, list):
-		args = shlex.split(args)
-	args = [bioprocs, command] + args
-	return runcmd(args, quit)
-
-def cmdargs(params, dash = 'auto', equal = 'auto', duplistkey = False, ignorefalse = True):
-	"""
-	Convert a dict of parameters into a command line parameter
-	@params:
-		`params`: The dict of parameters
-		`dash`  : The dash prefix of each parameter key.
-			- `auto`: A single dash for single-char key, otherwise double dashes
-			- Otherwise use whatever being passed.
-		`equal` : The separater between the key and the value.
-			- `auto`: Space for single-char key, otherwise equal sign `=`
-			- Otherwise use whatever being passed.
-		`duplistkey`: Whether duplicate keys for list values. Default: `False`
-			- For example for `params = {'a': [1,2,3]}`,
-			- if `duplistkey = True`, it will be: `-a 1 -a 2 -a 3`,
-			- otherwise it will be `-a 1 2 3`
-		`ignorefalse`: Ignore boolean False parameter? Default: `True`
-	"""
-	if not params: return ''
-	try:  # py3
-		from shlex import quote
-	except ImportError:  # py2
-		from pipes import quote
-
-	ret = []
-	# decide the order
-	if not isinstance(params, OrderedDict):
-		params = OrderedDict([(key, params[key]) for key in sorted(params.keys())])
-	
-	# positional parameters
-	positional = None
-	if "" in params:
-		positional = params[""]
-		del params[""]
-	
-	for key, val in params.items():
-		# allow comments for parameters for the same key
-		key = key.split('#')[0].strip()
-		item = dash if dash != 'auto' else '--' if len(key) > 1 else '-'
-		item += key
-		if isinstance(val, (tuple, list)):
-			# ignore keys with no values
-			if not val: continue
-			item += equal if equal != 'auto' else '=' if len(key)>1 else ' '
-			if duplistkey:
-				ret.extend([item + quote(str(v)) for v in val])
-			else:
-				ret.append(item + quote(str(val[0])))
-				ret.extend([quote(str(v)) for v in val[1:]])
-		elif isinstance(val, bool):
-			if not val and ignorefalse:
-				continue
-			if val:
-				ret.append(item)
-			else:
-				item += equal if equal != 'auto' else '=' if len(key)>1 else ' '
-				item += '0'
-				ret.append(item)
-		else:
-			item += equal if equal != 'auto' else '=' if len(key)>1 else ' '
-			item += quote(str(val))
-			ret.append(item)
-
-	if positional:
-		if not isinstance(positional, (tuple, list)):
-			positional = [positional]
-		ret.extend([quote(str(pos)) for pos in positional])
-
-	return ' '.join(ret)
 
 def _autoUnit(num):
 	if num % (1024 * 1024) == 0:
@@ -190,6 +94,18 @@ def mem2 (mem, unit = 'auto'):
 		xmx = "-Xmx" + str(retn) + retu
 		n, u = _autoUnit(num / 8)
 		return '-Xms' + str(n) + u + ' ' + xmx
+	elif unit == 'JAVADICT' or unit == 'JDICT':
+		n, u = _autoUnit(num / 8)
+		return {
+			'Xmx' + str(retn) + retu: True,
+			'Xms' + str(n) + u: True
+		}
+	elif unit == '-JAVADICT' or unit == '-JDICT':
+		n, u = _autoUnit(num / 8)
+		return {
+			'-Xmx' + str(retn) + retu: True,
+			'-Xms' + str(n) + u: True
+		}
 	else:
 		return str(retn) + retu
 
@@ -198,5 +114,26 @@ def regionOverlap(CHR1, START1, END1, CHR2, START2, END2):
 	if int(END1) < int(START2): return False
 	if int(END2) < int(START1): return False
 	return True
+
+def funcargs(func):
+	if not callable(func):
+		raise ValueError('Expect a callable.')
+	try:
+		from inspect import signature
+		return list(signature(func).parameters.keys())
+	except ImportError:
+		from inspect import getargspec
+		return getargspec(func).args
+
+def gztype(gzfile):
+	import binascii
+	with open(gzfile, 'rb') as f:
+		flag = binascii.hexlify(f.read(4))
+	if flag == b'1f8b0804':
+		return 'bgzip'
+	if flag == b'1f8b0808':
+		return 'gzip'
+	return 'flat'
+
 
 logger = getLogger()

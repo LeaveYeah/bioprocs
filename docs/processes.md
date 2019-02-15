@@ -69,7 +69,6 @@
     - **args**  
         - `seed`: The seed for sampling the training set.  
         - `tfrac`: The fraction of samples used for training.  
-        ``
 ## bed
 
 !!! hint "pBedSort"
@@ -679,6 +678,7 @@
         	- See https://github.com/AstraZeneca-NGS/reference_data/tree/master/hg19/bed
         - `accfile`: Directly use the access file. Default: generating from the reference file.  
         	- See https://github.com/etal/cnvkit/tree/master/data
+        - `nthread`: The number of threads to use. Default: 1  
         - `ref`    : The reference genome.  
         - `params` : The extra parameters for cnvkit's `access`, `target` and `autobin` command. Default:   
         	```python
@@ -727,6 +727,7 @@
     - **args**  
         - `ref`   : The reference file.  
         - `cnvkit`: The executable of cnvkit. Default: 'cnvkit.py'  
+        - `nthread`: The number of threads to use. Default: 1  
         - `params`: Other parameters for `cnvkit.py reference`, default: " --no-edge "  
 
     - **requires**  
@@ -902,6 +903,7 @@
 
     - **args**  
         - `cnvkit`: The executable of cnvkit. Default: 'cnvkit.py'  
+        - `nthread`: The number of threads to use. Default: 1  
         - `params`: Other params for `cnvkit.py export`  
 
     - **requires**  
@@ -910,22 +912,19 @@
 !!! hint "pCNVkit2Theta"
 
     - **description**  
-        Conver the results to THetA2 input and run THetA2.
+        Convert the results to THetA2 interval input.
 
     - **input**  
         - `cnsfile:file`: The cns file  
         - `cnnfile:file`: The reference cnn file or the cnr file for paired Normal sample. Could be empty.  
-        - `snvfile:file`: The VCF file of somatic mutations call from paired samples. Could be empty.  
 
     - **output**  
-        - `outdir:dir`: The output directory  
+        - `outfile:file`: The interval file for THetA2  
 
     - **args**  
         - `nthread` : Number threads to use. Default: `1`  
         - `cnvkit`  : The executable of cnvkit. Default: `cnvkit.py`  
-        - `theta`   : The executable of THetA2. Default: `RunTHetA.py`  
-        - `ckparams`: Other params for `cnvkit.py export theta`  
-        - `ttparams`: Other params for `RunTHetA.py`. Default: `Box(BAF=True, FORCE=True, n=2)`  
+        - `params`  : Other params for `cnvkit.py export theta`  
 ## common
 
 !!! hint "pSort"
@@ -1270,6 +1269,20 @@
 
     - **description**  
         Use Kallisto to get gene expression from pair-end fastq files.
+
+    - **input**  
+        - `fqfile1:file`: The fastq file1.  
+        - `fqfile2:file`: The fastq file2.  
+
+    - **output**  
+        - `outfile:file`: The expression file  
+        - `outdir:dir`  : Output direcotry with expression and other output files  
+
+    - **args**  
+        - `params`  : Other parameters for `kallisto quant`. Default: `Box()`  
+        - `idxfile` : The kallisto index file. Default: `params.kallistoIdx`  
+        - `kallisto`: The path to `kallisto`. Default: `params.kallisto`  
+        - `nthread` : # threads to use. Default: `1`  
 
 !!! hint "pFastqSim"
 
@@ -2050,7 +2063,7 @@
 
     - **args**  
         - `weightexp`: Exponential weight employed in calculation of enrichment scores. Default: 0.75  
-        - `nperm`: Number of permutations. Default: 10000  
+        - `nperm`: Number of permutations. Default: 1000  
 
 !!! hint "pEnrichr"
 
@@ -2074,15 +2087,8 @@
         - `libs`: The databases to do enrichment against. Default: KEGG_2016  
           - A full list can be found here: http://amp.pharm.mssm.edu/Enrichr/#stats
           - Multiple dbs separated by comma (,)
-        - `norm`: Normalize the gene list use [python-mygene](https://pypi.python.org/pypi/mygene/3.0.0)  
-        - `rmtags`: Remove pathway tags in the plot. Default: True  
-          - For example: change "Lysine degradation_Homo sapiens_hsa00310" to "Lysine degradation".
         - `plot`: Whether to plot the result. Default: True  
-        - `title`: The title for the plot. Default: "Gene enrichment: {db}"  
-        - `cachedir`: The cachedir for gene name normalization.  
-
-    - **requires**  
-        [python-mygene](https://pypi.python.org/pypi/mygene/3.0.0) if `args.norm` is `True`
+        - `devpars`: Parameters for png. Default: `{'res': 300, 'width': 2000, 'height': 2000}`  
 
 !!! hint "pTargetEnrichr"
 
@@ -2425,50 +2431,33 @@
 
     - **requires**  
         `r-rpart`
-## network
-## pca
 
-!!! hint "pPCA"
+!!! hint "pCrossValid"
 
     - **description**  
-        Perform PCA analysis
+        Do cross validation on a model using R carent package.
 
     - **input**  
-        - `infile:file`: The matrix to do the analysis  
-        - Note that rows are samples, columns are features, if not, use `args.transpose = True`
+        - `infile:file`: The input data file.  
 
     - **output**  
-        - `outfile:file`: The output coordinate file  
-        - Columns are PCs, rows are samples
+        - `outmodel:file`: The trained model in RDS format  
+        - `outdir:dir`   : The output directory containing output model and plots.  
 
     - **args**  
-        - `transpose`: Whether to transpose the input matrix from infile. Default: False  
-        - `rownames`: The `row.names` argument for `read.table`, default: 1  
-        - `header`: The `header` argument for `read.table` to read the input file, default: True.  
-        - `screeplot`: Whether to generate the screeplot or not. Default: True  
-        - `sp_ncp`: Number of components in screeplot. Default: 0 (auto detect)  
-        - if total # components (tcp) < 20: use all
-        - else if tcp > 20, use 20
-        - `varplot`: Whether to generate the variable plot or not. Default: False  
-        - `biplot`: Whether to generate the variable plot or not. Default: True  
+        - `inopts` : The options to read the input file.  
+        - `ctrl`   : Arguments for `trainControl`. See `?trainControl`. Default: `Box(method = '', savePredictions = True, classProbs = True)`  
+        - `train`  : Arguments for `train` other than `data` and `trControl`. Default: `Box(form = None, method = '', metric = 'ROC')`  
+        	- see `?train`
+        - `seed`   : The seed. Default: `None`  
+        - `nthread`: # threads to use. Default: `1`  
+        - `plots`  : Do types of plots. Default: `['model', 'roc']`  
+        	- `varimp` also available
+        	- You can also concatenate them using comma (`,`)
 
     - **requires**  
-        [`r-factoextra`](https://cran.r-project.org/web/packages/factoextra/index.html) for plots
-
-!!! hint "pSelectPCs"
-
-    - **description**  
-        Select a subset of PCs from pPCA results
-
-    - **input**  
-        - `indir:file`: The directory generated from pPCA  
-
-    - **output**  
-        - `outfile:file`: The file containing selected PCs  
-
-    - **args**  
-        - `n`: The number of PCs to select. Default: 0.9  
-        - If it is < 1, used as the % variation explained from stdev.txt
+        `r-caret`
+## network
 ## picard
 
 !!! hint "pMarkDuplicates"
@@ -2856,7 +2845,7 @@
         Generate box plot
 
     - **input**  
-        - `datafile:file`: The data file  
+        - `infile:file`: The data file  
 
     - **output**  
         - `outpng:file`: The output figure  
@@ -2888,7 +2877,31 @@
         	  1.1	.8	3.2
         	  1.2	.9	2.2
         	  ```
-        - `params`: Other parameters for `boxplot`, default: `""`  
+        - `params`: Other parameters for `geom_boxplot`, default: `Box()`  
+        - `ggs`   : Extra ggplot2 statements  
+
+!!! hint "pBar"
+
+    - **description**  
+        Generate bar/col plot
+
+    - **input**  
+        - `infile:file`: The data file  
+
+    - **output**  
+        - `outpng:file`: The output figure  
+
+    - **args**  
+        - `inopts` : Input options to read the input file  
+        	- `cnames` :   Whether the input file has header. Default: `True`
+        	- `rnames` :   Whether the input file has row names. Default: `False`
+        	- `delimit`:   The seperator. Defualt: `\\t`
+        - `x`      : The `ind` (index) column. Only for `args.stacked = True`. Default: `2`  
+        - `y`      : The `values` column. Only for `args.stacked = True`. Default: `1`  
+        - `helper` : Some raw codes to help to construct the matrix and arguments.  
+        - `stacked`: Whether the input file is stacked  
+        	- see `pBoxplot.args.stacked`
+        - `params`: Other parameters for `geom_bar`, default: `Box()`  
         - `ggs`   : Extra ggplot2 statements  
 
 !!! hint "pHeatmap"
@@ -2919,6 +2932,50 @@
         	- `random:N`: Random N rows. N defaults to 50
         	- `random-both:N`: Random N rows from top part and N rows from bottom part. N defaults to 50
         - `cols`: Col selector (see `rows`).  
+
+!!! hint "pHeatmap2"
+
+    - **description**  
+        Plot heatmaps using R package ComplexHeatmap. Example:
+        ```
+        bioprocs plot.pHeatmap2 
+        	-i.infile MMPT.txt 
+        	-i.annofiles:l:o PatientAnno.txt 
+        	-args.params.row_names_gp 'r:fontsize5' 
+        	-args.params.column_names_gp 'r:fontsize5' 
+        	-args.params.clustering_distance_rows pearson 
+        	-args.params.clustering_distance_columns pearson 
+        	-args.devpars.width 5000 
+        	-args.devpars.height 5000 
+        	-args.draw.merge_legends 
+        	-args.params.heatmap_legend_param.title AUC 
+        	-args.params.row_dend_reorder 
+        	-args.params.column_dend_reorder 
+        	-args.params.top_annotation 'r:HeatmapAnnotation(Mutation = as.matrix(annos[,(length(groups)+1):ncol(annos)]), Group = as.matrix(annos[,groups]), col = list(Mutation = c(`0`="grey", `1`="lightgreen", `2`="green", `3`="darkgreen")), annotation_name_gp = fontsize8, show_legend = c(Group=F))' 
+        	-args.params.right_annotation 'r:rowAnnotation(AUC = anno_boxplot(as.matrix(data), outline = F))' 
+        	-args.helper 'fontsize8 = gpar(fontsize = 12); fontsize5 = gpar(fontsize = 8); groups = c("Group1", "Group2", "Group3")' 
+        	-args.seed 8525
+        ```
+
+    - **input**  
+        - `infile:file`: The input data file for the main heatmap.  
+        - `annofiles:files`: The annotation files.  
+        	- For now, they should share the same `args.anopts`
+
+    - **output**  
+        - `outfile:flie`: The plot.  
+
+    - **args**  
+        - `devpars`: The parameters for device. Default: `{'res': 300, 'height': 2000, 'width': 2000}`  
+        - `draw`   : The parameters for `ComplexHeatmap::draw`  
+        - `params` : Other parameters for `ComplexHeatmap::Heatmap`  
+        - `anopts` : The options to read the annotation files.  
+        - `inopts` : The options to read the input files.  
+        - `seed`   : The seed. Default: `None`  
+        - `helper` : The raw R codes to help defining some R variables or functions.  
+
+    - **requires**  
+        `R-ComplexHeatmap` (tested on c269eb425bf1b2d1713b9d5e68bf9f08bd8c7acb)
 
 !!! hint "pScatterCompare"
 
@@ -3035,6 +3092,38 @@
         - `rnames` : Whether the input file has row names. Default: `False`  
         - `ggs`    : Extra expressions for ggplot.  
         - `devpars`: The parameters for plot device. Default: `{'res': 300, 'height': 2000, 'width': 2000}`  
+
+!!! hint "pManhattan"
+
+    - **description**  
+        Manhattan plot.
+
+    - **input**  
+        - `infile:file`: The input file. First 6 columns should be BED6, and then column:  
+        	- 7: The raw pvalue.
+        	- 8: The x-axis labels for the records.
+        	- For example:
+        		```
+        		chr19	45604163	45604163	rs7255060	0	+	3.238E-03	+200K
+        		chr19	45595277	45595277	rs10417101	0	+	3.870E-03	+200K
+        		chr19	45394336	45394336	rs71352238	0	+	6.440E-03	-50K
+        		chr19	45615857	45615857	rs6509194	0	+	1.298E-02	+250K
+        		chr19	45594170	45594170	rs3178166	0	+	3.617E-02	+200K
+        		chr19	45361574	45361574	rs3852856	0	+	2.070E-02	-100K
+        		chr19	45220205	45220205	rs57090948	0	+	4.384E-02	-200K
+        		chr19	45396219	45396219	rs157582	0	+	9.472E-03	-50K
+        		chr19	45210634	45210634	rs10421830	0	+	1.375E-02	-250K
+        		chr19	45228502	45228502	rs10422350	0	+	4.121E-02	-200K
+        		```
+        - `hifile:file`: The file with the record names (one per line) to highlight in the plot.  
+
+    - **output**  
+        - `outfile:file`: The plot. Default: `{{i.infile | fn}}.manht.png`  
+
+    - **args**  
+        - `inopts` : Options to read the input file. Default: `Box(cnames = False, rnames = False)`  
+        - `ggs`    : Extra expressions for ggplot.  
+        - `devpars`: The parameters for plot device. Default: `{'res': 300, 'height': 2000, 'width': 2000}`  
 ## power
 
 !!! hint "pSurvivalPower"
@@ -3133,14 +3222,14 @@
 
     - **args**  
         - `informat`: The input format of the values. Whether they are real values (value) or ranks (rank). Default: value  
+        	- Records will be ordered descendingly by value (Larger value has higher rank (lower rank index)).
         - `pval`: Whether to calculate the p-value or not. Default: True  
-        - `header`: Whether the input file has headers (rownames are required!). Default: True  
         - `plot`: Number of rows to plot. Default: 0 (Don't plot)  
         - `cex`: Font size for plotting. Default: 0.9  
         - `cnheight`: Colname height. Default: 80  
         - `rnwidth`: Rowname width. Default: 50  
-        - `width`: Width of the png file. Default: 2000  
-        - `height`: height of the png file. Default: 2000  
+        - `devpars`: device parameters for the plot. Default: `Box(res=300, width=2000, height=2000)`  
+        - `inopts`: Options for reading the input file. Default: `Box(cnames=True, rnames=True, delimit="\t")`  
 ## resource
 
 !!! hint "pTxt"
@@ -3195,19 +3284,46 @@
         - `heatmapggs`: The ggplot parameters for heatmap. Default: `['r:theme(axis.text.y = element_blank())']`  
         - `histplotggs`: The ggplot parameters for histgram. Default: `['r:labs(x = "Expression", y = "# Samples")']`  
 
-!!! hint "pExprPlot"
+!!! hint "pExprFiles2Mat"
+
+    - **description**  
+        Merge expression to a matrix from single samples.
+
+    - **input**  
+        - `infiles:files`: The expression file from single samples, typically with 2 columns: gene and expression value  
+
+    - **output**  
+        - `outfile:file`: the expression matrix file  
+
+    - **args**  
+        - `fn2sample`: Transform filename (no extension) as column name. Default: "function(fn) fn"  
+        - `inopts`   : Options to read input files. Default: `Box(rname = True, cnames = True)`  
+
+!!! hint "pExprStats"
 
     - **description**  
         Plot the expression out.
 
     - **input**  
         - `infile:file`: The expression matrix (rows are genes and columns are samples).  
+        - `gfile:file` : The sample information file. Determines whether to do subgroup stats or not.  
+        	- If not provided, not do for all samples
 
     - **output**  
         - `outdir:dir`: The directory containing the plots  
+        	- If `args.filter` is given, a filtered expression matrix will be generated in `outdir`.
 
     - **args**  
-        
+        - `inopts`: Options to read `infile`. Default: `Box(cnames = True, rnames = True)`  
+        - `tsform`: An R function in string to transform the expression matrix (i.e take log).  
+        - `filter`: An R function in string to filter the expression data.  
+        - `plot`  : Which plot to do? Default: `Box(boxplot = True, histogram = True, qqplot = True)`  
+        - `ggs`   : The ggs for each plot. Default:  
+        	- `boxplot   = Box(ylab = {0: "Expression"})`,
+        	- `histogram = Box(labs = {'x': 'Expression', 'y': '# Genes'})`,
+        	- `qqplot    = Box()`
+        - `params` : The params for each ggplot function.  
+        - `devpars`: Parameters for png. Default: `{'res': 300, 'width': 2000, 'height': 2000}`  
 
 !!! hint "pBatchEffect"
 
@@ -3289,12 +3405,13 @@
         - `gfile:file`: The group information  
         	- Like:
         	```
-        	Sample1	Group1
-        	Sample2	Group1
-        	Sample3	Group1
-        	Sample4	group2
-        	Sample5	group2
-        	Sample6	group2
+        	Sample	[Patient	]Group
+        	sample1	[patient1	]group1
+        	sample2	[patient1	]group1
+        	sample3	[patient2	]group1
+        	sample4	[patient2	]group2
+        	sample5	[patient3	]group2
+        	sample6	[patient3	]group2
         	```
 
     - **output**  
@@ -3302,17 +3419,25 @@
         - `outdir:file`: The output directory containing deg list and plots  
 
     - **args**  
-        - `tool`      : the tool used to detect DEGs. Default: 'edger' (deseq2)  
-        - `filter`    : filter out low count records. Default: `"1,2"` (At least 2 samples have at least 2 reads)  
-        - `mdsplot`   : whether to plot the MDS plot, default : True  
-        - `volplot`   : whether to plot the volcano plot, default : True  
-        - `maplot`    : whether to plot MA plots within each group, default : False  
-        - `heatmap`   : whether to plot the heatmap using DEGs. Default : False  
-        - `heatmapn`  : How many genes to be used for heatmap. If `heatmapn`, the number will be `heatmapn * # DEGs`. Default: 100  
-        - `heatmapggs`: The ggplots options for heatmap. Default : []  
-        - `maplotggs` : The ggplots options for maplot. Default : []  
-        - `volplotggs`: The ggplots options for volplot. Default : []  
-        - `devpars`   : Parameters for png. Default: `{'res': 300, 'width': 2000, 'height': 2000}`  
+        - `tool`  : The tool used to detect DEGs. Default: 'deseq2' (edger is also available).  
+        - `inopts`: Options to read `infile`. Default: `Box(cnames = True, rnames = True)`  
+        - `cutoff`: The cutoff used to filter the results. Default: `0.05`  
+        	- `0.05` implies `{"by": "p", "value": "0.05", "sign": "<"}`
+        - `plot`  : The plots to do. Default:   
+        	- `mdsplot`: True, MDS plot
+        	- `volplot`: True, volcano plot
+        	- `maplot `: True, MA plot
+        	- `heatmap`: True, heatmap for DEGs
+        	- `qqplot `: True, The QQplot for pvalues
+        - `ggs`   : The ggs for each plot. Default:  
+        	- `heatmap`: `Box(theme = {'axis.text.y': 'r:element_blank()'})`
+        	- Not available for `mdsplot`.
+        	- Others are empty `Box()`s
+        - `params`: Parameters for each plot. Default:   
+        	- `volplot`: `Box(pcut = 0.05, fccut = 2)`
+        	- `maplot` : `Box(pcut = 0.05)`
+        - `devpars`: Parameters for png. Default: `{'res': 300, 'width': 2000, 'height': 2000}`  
+        - `mapfile`: Probe to gene mapping file. If not provided, assume genes are used as rownames.  
 
 !!! hint "pCoexp"
 
@@ -3330,29 +3455,27 @@
 
     - **output**  
         - `outfile:file`: The output bam file  
-        - `idxfile:file`: The index of the output bam file  
-        - If args.index == False, it'll a link to outfile and should be never used
 
     - **args**  
         - `tool`             : The tool used to do the sort. Default: sambamba (picard|sambamba|biobambam|samtools)  
         - `sambamba`         : The path of the sambamba. Default: sambamba  
         - `picard`           : The path of the picard. Default: picard  
         - `biobambam_bamsort`: The path of the biobambam's bamsort. Default: bamsort  
-        - `samtools`         : The path of the samtools. Default: samtools  
-        - `sort`             : Do sorting? Default: True  
-        - If input is sam, tool is biobambam, this should be True
-        - `index`            : Do indexing? Default: True  
-        - `markdup`          : Do duplicates marking? Default: False  
-        - `rmdup` for samtools will be called
-        - `rmdup`            : Do duplicates removing? Default: False  
-        - `tmpdir`           : The tmp dir used to store tmp files. Default: <system default tmpdir>  
-        - `sortby`           : Sort by coordinate or queryname. Default: coordinate  
-        - `nthread`          : Default: 1  
-        - `informat`         : The format of input file. Default: <detect from extension> (sam|bam)  
-        - `params`           : Other parameters for `tool`. Defaut: ""  
-        - `mem`              : The max memory to use. Default: "16G"  
-        - Unit could be G/g/M/m
-        - Will be converted to -Xmx4G, and -Xms will be 1/8 of it
+        - `samtools`: The path of the samtools. Default: samtools  
+        - `sort`    : Do sorting? Default: True  
+        	- If input is sam, tool is biobambam, this should be True
+        - `index`  : Do indexing? Default: True  
+        - `markdup`: Do duplicates marking? Default: False  
+        	- `rmdup` for samtools will be called
+        - `rmdup`  : Do duplicates removing? Default: False  
+        - `tmpdir` : The tmp dir used to store tmp files. Default: <system default tmpdir>  
+        - `sortby` : Sort by coordinate or queryname. Default: coordinate  
+        - `nthread`: Default: 1  
+        - `infmt`  : The format of input file. Default: <detect from extension> (sam|bam)  
+        - `params` : Other parameters for `tool`. Defaut: ""  
+        - `mem`    : The max memory to use. Default: "16G"  
+        	- Unit could be G/g/M/m
+        	- Will be converted to -Xmx4G, and -Xms will be 1/8 of it
 
     - **requires**  
         [sambamba](https://lomereiter.github.io/sambamba/docs/sambamba-view.html) if `args.tool` == samtools or reference used but not indexed.
@@ -3407,20 +3530,20 @@
         - `outfile:file`: The output bam file  
 
     - **args**  
-        - `tool`                         : The tool used to recalibrate the bam file. Default: `gatk` (gatk|bamutil)  
-        - `gatk`                         : The path of gatk, including java path. Default: `gatk`  
-        - `samtools`                     : The path of samtools. Default: `samtools`  
-        - `bamutil`                      : The path of bamutil. Default: `bam`  
-        - `picard`                       : The path of picard. Default: `picard`  
-        - `paramsRealignerTargetCreator` : Other parameters for `gatk RealignerTargetCreator`. Defaut: ""  
-        - `paramsIndelRealigner`         : Other parameters for `gatk IndelRealigner`. Defaut: ""  
-        - `paramsBaseRecalibrator`       : Other parameters for `gatk BaseRecalibrator`. Defaut: ""  
-        - `paramsPrintReads`             : Other parameters for `gatk PrintReads`. Defaut: ""  
-        - `params`                       : Other parameters for `bam recab`. Default: ""  
-        - `mem`                          : The max memory to use. Default: "32G"  
-        - `knownSites`                   : The known polymorphic sites to mask out. Default: "" (Required for GATK)  
-        - `ref`                          : The reference file. Required.  
-        - Will be converted to -Xmx4G, and -Xms will be 1/8 of it
+        - `tool`    : The tool used to recalibrate the bam file. Default: `gatk` (gatk|bamutil)  
+        - `gatk`    : The path of gatk, including java path. Default: `gatk`  
+        - `samtools`: The path of samtools. Default: `samtools`  
+        - `bamutil` : The path of bamutil. Default: `bam`  
+        - `picard`  : The path of picard. Default: `picard`  
+        - `params`  : Other parameters for `bam recab`. Default         : ""  
+        	`RealignerTargetCreator` : Other parameters for `gatk RealignerTargetCreator`. Defaut: ""
+        	`IndelRealigner`         : Other parameters for `gatk IndelRealigner`. Defaut: ""
+        	`BaseRecalibrator`       : Other parameters for `gatk BaseRecalibrator`. Defaut: ""
+        	`PrintReads`             : Other parameters for `gatk PrintReads`. Defaut: ""
+        - `mem`: The max memory to use. Default: "32G"  
+        - `knownSites`: The known polymorphic sites to mask out. Default: "" (Required for GATK)  
+        - `ref`: The reference file. Required.  
+        	- Will be converted to -Xmx4G, and -Xms will be 1/8 of it
 
     - **requires**  
         [gatk](https://software.broadinstitute.org/gatk)
@@ -3516,17 +3639,17 @@
         - `outfile:file`: The vcf file containing the mutations  
 
     - **args**  
-        - `tool`: The tool used to call mutations. Default: gatk (vardict, snvsniffer, platypus, strelka)  
-        - `gatk`: The path of gatk. Default: gatk  
-        - `vardict`: The path of vardict. Default: vardict  
+        - `tool`      : The tool used to call mutations. Default: gatk (vardict, snvsniffer, platypus, strelka)  
+        - `gatk`      : The path of gatk. Default: gatk  
+        - `vardict`   : The path of vardict. Default: vardict  
         - `snvsniffer`: The path of snvsniffer. Default: SNVSniffer  
-        - `samtools`: The path of samtools. Default: samtools (used to generate reference index)  
-        - `platypus`: The path of platypus. Default: platypus  
-        - `strelka`: The path of strelka. Default: configureStrelkaGermlineWorkflow.py  
-        - `configParams`: The params for `strelka` configuration. Default: ""  
-        - `picard`: The path of picard. Default: picard  
-        - `mem`: The memory to be used. Default: 32G  
-        - will be converted to -Xms4G -Xmx32G for java programs
+        - `samtools`  : The path of samtools. Default: samtools (used to generate reference index)  
+        - `platypus`  : The path of platypus. Default: platypus  
+        - `strelka`   : The path of strelka. Default: configureStrelkaGermlineWorkflow.py  
+        - `cfgParams` : The params for `strelka` configuration. Default: ""  
+        - `picard`    : The path of picard. Default: picard  
+        - `mem`       : The memory to be used. Default: 32G  
+        	- will be converted to -Xms4G -Xmx32G for java programs
         - `ref`: The reference file. Required.  
         - `gz`: Gzip output file? Default: False  
         - `tmpdir`: The temporary directory. Default: <system tmpdir>  
@@ -3682,6 +3805,23 @@
 
     - **requires**  
         [`htseq`](https://htseq.readthedocs.io/)
+
+!!! hint "pBamIndex"
+
+    - **description**  
+        Index bam files.
+
+    - **input**  
+        - `infile:file`: The input bam file  
+
+    - **output**  
+        - `outfile:file`: The symbolic link to the input file  
+        - `outidx:file` : The index file  
+
+    - **args**  
+        - `samtools`: Path to samtools. Default: `params.samtools`  
+        - `params`  : Other parameters for samtools. Default: `Box(b = True)`  
+        - `nthread` : # threads to use. Default: `1`  
 ## seq
 
 !!! hint "pConsvPerm"
@@ -4462,6 +4602,81 @@
         - `plot`  : Plot the correlation for cases? Default: `False`  
         - `ggs`   : `ggs` items for the plot.  
         - `devpars`: The device parameters for the plot.  
+
+!!! hint "pBootstrap"
+
+    - **description**  
+        Do bootstrapping resampling
+
+    - **input**  
+        - `infile:file`: The input data file  
+
+    - **output**  
+        - `outfile:file`: The output file with the bootstrapped statistics values  
+        	- depends on the `args.stats` function
+        - `outdir:dir`: The directory to save the outfile and figures.  
+
+    - **args**  
+        - `inopts`: The options to read the input file. Default: `Box(cnames = True, rnames = True)`  
+        - `params`: Other parameters for `boot` function from R `boot` package  
+        - `nthread`: # of threads(cores) to use. Default: `1`  
+        - `n`: Sampling how many times? Default: `1000`  
+        - `stats`: The function to generate statistics for output. Default: `function(x) x`  
+        	- Default to use all data
+        	- This function can return a multiple statistics in a vector
+        	- The argument `x` is the data generate for each sampling. 
+        	- Unlink the `statistic` argument from `boot`, to make it convenient, we don't put the `index` here.
+        - `plot`: Plot the statistics? Default: `all` (plot all statistics)  
+        	- You may also specify indices. For example: `[1, 2]` to plot the 1st and 2nd statistics
+        	- Use `False` or `None` to disable plotting
+        - `devpars`: The device parameters for the plot.  
+
+!!! hint "pPCA"
+
+    - **description**  
+        Perform PCA analysis. Example:
+        ```
+        bioprocs stats.pPCA 
+        	-i.infile Cellline_t.txt 
+        	-i.annofile CLAnno.txt 
+        	-args.plots.clplot.repel 
+        	-args.plots.clplot.shape 3 
+        	-args.plots.clplot.ggs.geom_point 'r:list(aes(shape = Cellline), color = "#2b6edb", data = anno)' 
+        	-args.seed 8525 
+        	-args.plots.cluster.centers 2 
+        	-args.plots.clplot.show-clust-cent 0 
+        	-args.plots.cluster.npcs 2
+        ```
+
+    - **input**  
+        - `infile:file`: The matrix to do the analysis  
+        	- Columns are the features
+
+    - **output**  
+        - `outfile:file`: The file with the components  
+        - `oudir:dir`   : The directory c  
+
+    - **args**  
+        - `devpars`: The parameters for device. Default: `{'res': 300, 'height': 2000, 'width': 2000}`  
+        - `anopts` : The options to read the annotation files.  
+        - `inopts` : The options to read the input files.  
+        - `na`     : How to deal with `NA` values. Default: `0`  
+        	- A logistic/boolean value will remove them (use `complete.cases`)
+        	- Otherwise, it will be replaced by the given value.
+        - `seed`   : The seed. Default: `None`  
+        - `plots`  : Use R package `factoextra` to do Plots. You can use `False` for each to disable each plot.  
+        	- `scree`  : Scree plot, see `?fviz_screeplot`. Default: `Box(ncp = 20`)
+        	- `var`    : Var plot, see `?fviz_pca_var`. Default: `Box(repel = False)`
+        	- `bi`     : Biplot,   see `?fviz_pca_biplot`. Default: `Box(repel = False)`
+        	- `clplot` : Cluster plot, see `?fviz_cluster`. Default: `Box(repel = False, main = "", ggs = Box())`
+        		- The extra `ggs` is used to extend the plot. See example in description.
+        	- `cluster`: Cluster options for the cluster plot. Default: `Box(npcs  = .8, method = 'kmeans')`
+        		- `npcs`: # of PCs to use for clustering. `npcs` < 1 will be treated as variance contribution of PCs. For example, `0.8` will take first N PCs will contribute 80% of variance. Default: `.8`
+        		- `method`: Clustering method. Available methods would be `kmeans` and methods supported by `cluster` package.
+        		- Other arguments for the clustering function.
+
+    - **requires**  
+        [`R-factoextra`](https://cran.r-project.org/web/packages/factoextra/index.html) for plots
 ## tabix
 
 !!! hint "pTabix"
@@ -4932,6 +5147,109 @@
         	- delimit: `\\t` (The delimit for output line)
         - `match`: The function to return a value to decide whether the row is repeated, argument is a `TsvRecord`.  
         - `do`   : The merge function in python, argument is a list of `TsvRecord`s or `list`s if `args.inopts.ftype` is `nometa`  
+## tumhet
+
+!!! hint "pSciClone"
+
+    - **description**  
+        Run sciClone for subclonal analysis.
+
+    - **input**  
+        - `vfvcfs:files`: The VCF files of mutations of each sample  
+        - `cnvcfs:files`: The VCF files of copy number variations of each sample  
+
+    - **output**  
+        - `outdir:dir`: The output directory.  
+
+    - **args**  
+        - `params`  : Other parameters for original `sciClone` function. Default: `Box()`  
+        - `exfile`  : The regions to be excluded. In BED3 format  
+        - `vfsamcol`: The index of the target sample in mutation VCF file, 1-based. Default: `1`  
+        - `cnsamcol`: The index of the target sample in copy number VCF file, 1-based. Default: `1`  
+        - `varcount`: An R function string to define how to get the variant allele count. Default: `function(fmt) as.integer(unlist(strsplit(fmt$AD, ","))[2])`  
+        	- If this function returns `NULL`, record will be skipped.
+        	- It can use the sample calls (`fmt`) and also the record info (`info`)
+        	- Both `function(fmt) ...` and `function(fmt, info) ...` can be used.
+        	- Don't include `info` if not necessary. This saves time.
+        	- This function can return the variant count directly, or 
+        	- an R `list` like: `list(count = <var count>, depth = <depth>)`.
+        	- By default, the `depth` will be read from `fmt$DP`
+        - `cncount` : An R function string to define how to get the copy number. Default: `function(fmt) fmt$CN`  
+        	- Similar as `varcount`
+        	- Returns copy number directly, or
+        	- an R `list` like: `list(cn = <copy number>, end = <end>, probes = <probes>)`
+        	- `end` defines where the copy number variation stops
+        	- `probes` defines how many probes cover this copy number variantion.
+
+!!! hint "pPyClone"
+
+    - **description**  
+        Run PyClone for subclonal analysis
+
+    - **input**  
+        - `vfvcfs:files`: The VCF files of mutations of each sample  
+        - `cnvcfs:files`: The VCF files of copy number variations of each sample  
+
+    - **output**  
+        - `outdir:dir`: The output directory.  
+
+    - **args**  
+        - `params`  : Other parameters for original `PyClone run_analysis_pipeline` function. Default: `Box()`  
+        - `vfsamcol`: The index of the target sample in mutation VCF file, 1-based. Default: `1`  
+        - `cnsamcol`: The index of the target sample in copy number VCF file, 1-based. Default: `1`  
+        - `varcount`: A python lambda string to define how to get the variant allele count. Default: `lambda fmt: fmt.get("AD") and fmt.get("AD")[1]`  
+        	- If this function returns `None`, record will be skipped.
+        	- It can use the sample calls (`fmt`) and also the record info (`info`)
+        	- Both `function(fmt) ...` and `function(fmt, info) ...` can be used.
+        	- This function can return the variant count directly, or 
+        	- a `dict` like: `dict(count = <var count>, depth = <depth>)`.
+        	- By default, the `depth` will be read from `fmt.DP`
+        - `cncount` : An python lambda string to define how to get the copy number. Default: `lambda fmt: fmt.get("CN")`  
+        	- Similar as `varcount`
+        	- Returns copy number directly, or
+        	- a `dict` like: `dict(cn = <copy number>, end = <end>)`
+        	- `end` defines where the copy number variation stops
+
+!!! hint "pQuantumClone"
+
+    - **description**  
+        Run QuantumClone: https://academic.oup.com/bioinformatics/article/34/11/1808/4802225
+
+    - **input**  
+        - `vfvcfs:files`: The input vcf files with mutations  
+
+    - **output**  
+        - `outdir:dir`: The output directory  
+
+    - **args**  
+        - `params`  : other parameters for `QuantumClone`'s `One_step_clustering`  
+        - `vfsamcol`: The index of the target sample in mutation VCF file, 1-based. Default: `1`  
+        - `varcount`: An R function string to define how to get the variant allele count. Default: `function(fmt) as.integer(unlist(strsplit(fmt$AD, ","))[2])`  
+        	- If this function returns `NULL`, record will be skipped.
+        	- It can use the sample calls (`fmt`) and also the record info (`info`)
+        	- Both `function(fmt) ...` and `function(fmt, info) ...` can be used.
+        	- Don't include `info` if not necessary. This saves time.
+        	- This function can return the variant count directly, or 
+        	- an R `list` like: `list(count = <var count>, depth = <depth>)`.
+        	- By default, the `depth` will be read from `fmt$DP`
+        - `nthread` : # threads to use. Default: `1`  
+
+!!! hint "pTheta"
+
+    - **description**  
+        Run THetA2 for tumor purity calculation
+        Set lower MIN_FRAC if interval is not enough and NO_CLUSTERING if it raises 
+        "No valid Copy Number Profiles exist", but have to pay attention to the results. 
+        (see: https://groups.google.com/forum/#!topic/theta-users/igrEUol3sZo)
+
+    - **args**  
+        - `affysnps`: The affymetrix Array snps, or other candidate snp list, in BED6-like format  
+        	- The first 6 columns should be in BED6 format
+        	- The 7th column is reference allele, and 8th column is mutation allele.
+
+    - **install**  
+        `conda install -c bioconda theta2`
+        `conda install -c bioconda bam-readcount`
 ## vcf
 
 !!! hint "pVcfFilter"
@@ -5006,6 +5324,21 @@
 
     - **requires**  
         `pyvcf`
+
+!!! hint "pVcfRemoveFilter"
+
+    - **description**  
+        Remove one or more filters in vcf files
+
+    - **input**  
+        - `infile:file`: The input vcf file  
+
+    - **output**  
+        - `outfile:file`: The output file  
+
+    - **args**  
+        - `rmfilter`: The filters to remove. If None, ALL filters will be removed!  
+        	- A `list` of filter names.
 
 !!! hint "pVcf"
 
@@ -5125,7 +5458,6 @@
 
     - **input**  
         - `infile:file`: The input vcf file, needs to be tabix indexed.  
-        	- `iftype = origin`, `i.infile` will point to the original file
 
     - **output**  
         - `outdir:dir`: The output directory containing the plink binary files  
@@ -5244,6 +5576,16 @@
         - `bedtools`: The path to bedtools.  
         - `tabix`   : The path to tabix.  
         - `any`     : Remove record in `infile1` with any overlap in `infile2`. Default: `True`  
+
+!!! hint "pVcfExtract"
+
+    - **description**  
+        Extract variants from a VCF file by given regions
+
+    - **args**  
+        - `tabix` : The path to tabix.  
+        - `params`: Other parameters for `tabix`. Default: `Box(h = True, B = True)`  
+        	- See `tabix --help`
 ## vcfnext
 
 !!! hint "pVcfStatsPlot"

@@ -25,28 +25,36 @@ def _getCommonName(f1, f2):
 	pFastq2Expr
 @description:
 	Use Kallisto to get gene expression from pair-end fastq files.
+@input:
+	`fqfile1:file`: The fastq file1.
+	`fqfile2:file`: The fastq file2.
+@output:
+	`outfile:file`: The expression file
+	`outdir:dir`  : Output direcotry with expression and other output files
+@args:
+	`params`  : Other parameters for `kallisto quant`. Default: `Box()`
+	`idxfile` : The kallisto index file. Default: `params.kallistoIdx`
+	`kallisto`: The path to `kallisto`. Default: `params.kallisto`
+	`nthread` : # threads to use. Default: `1`
 """
 pFastq2Expr        = Proc(desc = 'Use Kallisto to get gene expression from pair-end fastq files.')
 pFastq2Expr.input  = "fqfile1:file, fqfile2:file"
 pFastq2Expr.output = [
-	"outfile:file:{{i.fqfile1, i.fqfile2 | getCommonName}}/{{i.fqfile1, i.fqfile2 | getCommonName}}.expr",
-	"outdir:dir:{{i.fqfile1, i.fqfile2 | getCommonName}}"
+	"outfile:file:{{i.fqfile1, i.fqfile2 | *commonname}}/{{i.fqfile1, i.fqfile2 | *commonname}}.expr.txt",
+	"outdir:dir:{{i.fqfile1, i.fqfile2 | *commonname}}"
 ]
-pFastq2Expr.args.params = Box()
-pFastq2Expr.args.ref    = '' # don't give the whole genome sequence! takes long time!
-pFastq2Expr.args.idxfile       = params.kallistoIdx.value
-pFastq2Expr.args.kallisto      = params.kallisto.value
-pFastq2Expr.args.nthread       = 1
-pFastq2Expr.envs.getCommonName = _getCommonName
-pFastq2Expr.envs.bashimport    = bashimport
-pFastq2Expr.beforeCmd          = """
+pFastq2Expr.args.params     = Box()
+pFastq2Expr.args.idxfile    = params.kallistoIdx.value
+pFastq2Expr.args.kallisto   = params.kallisto.value
+pFastq2Expr.args.nthread    = 1
+pFastq2Expr.envs.commonname = lambda f1, f2, path = __import__('os').path: path.basename(path.commonprefix([f1, f2])).rstrip('_. ,[]')
+pFastq2Expr.envs.bashimport = bashimport
+pFastq2Expr.preCmd          = """
 {{bashimport}} reference.bash
-if ! refkallisto_check {{args.idxfile | squote}}; then
-	refkallisto_do {{args.ref | squote}} {{args.idxfile | squote}} {{args.kallisto | squote}}
-fi
+reference kallisto {{args.idxfile | squote}}
 """
-pFastq2Expr.lang                   = params.python.value
-pFastq2Expr.script                 = "file:scripts/fastx/pFastq2Expr.py"
+pFastq2Expr.lang   = params.python.value
+pFastq2Expr.script = "file:scripts/fastx/pFastq2Expr.py"
 
 """
 @name:
@@ -306,22 +314,32 @@ pFastqSE2Sam.script             = "file:scripts/fastx/pFastqSE2Sam.py"
 	`refgene`: The GTF file for STAR to build index. It's not neccessary if index is already been built. Default: ''
 	`params` : Other params for tool, default: ''
 """
-pFastq2Sam                    = Proc(desc = 'Map cleaned paired fastq file to reference genome.')
-pFastq2Sam.input              = "fq1:file, fq2:file"
-pFastq2Sam.output             = "outfile:file:{{i.fq1 | getFastqFn | lambda x: x[:-2] if x.endswith('_1') or x.endswith('_2') else x }}.{{args.outfmt}}"
-pFastq2Sam.args.outfmt        = "sam"
-pFastq2Sam.args.tool          = 'bwa'
-pFastq2Sam.args.bwa           = params.bwa.value
-pFastq2Sam.args.ngm           = params.ngm.value
-pFastq2Sam.args.star          = params.star.value
-pFastq2Sam.args.samtools      = params.samtools.value
-pFastq2Sam.args.bowtie2       = params.bowtie2.value
-pFastq2Sam.args.bowtie2_build = params.bowtie2.value + '-build'
-pFastq2Sam.args.rg            = Box(id = '', pl = 'Illumina', pu = 'unit1', lb = 'lib1', sm = '')
-pFastq2Sam.args.ref           = params.ref.value
-pFastq2Sam.args.refgene       = params.refgene.value
-pFastq2Sam.args.nthread       = 1
-pFastq2Sam.args.params        = Box()
-pFastq2Sam.envs.getFastqFn    = _getFastqFn
+pFastq2Sam                 = Proc(desc = 'Map cleaned paired fastq file to reference genome.')
+pFastq2Sam.input           = "fq1:file, fq2:file"
+pFastq2Sam.output          = "outfile:file:{{i.fq1, i.fq2 | path.commonprefix | path.basename | .rstrip: '_. ,[]' }}.sam"
+pFastq2Sam.args.tool       = 'bwa'
+pFastq2Sam.args.bwa        = params.bwa.value
+pFastq2Sam.args.ngm        = params.ngm.value
+pFastq2Sam.args.star       = params.star.value
+pFastq2Sam.args.samtools   = params.samtools.value
+pFastq2Sam.args.bowtie2    = params.bowtie2.value
+pFastq2Sam.args.rg         = Box(id = '', pl = 'Illumina', pu = 'unit1', lb = 'lib1', sm = '')
+pFastq2Sam.args.ref        = params.ref.value
+pFastq2Sam.args.refgene    = params.refgene.value
+pFastq2Sam.args.nthread    = 1
+pFastq2Sam.args.params     = Box()
+pFastq2Sam.envs.path       = path
+pFastq2Sam.envs.bashimport = bashimport
+pFastq2Sam.preCmd          = """
+{{bashimport}} reference.bash
+export bwa={{args.bwa | squote}}
+export ngm={{args.ngm | squote}}
+export star={{args.star | squote}}
+export samtools={{args.samtools | squote}}
+export bowtie2={{args.bowtie2 | squote}}
+export nthread={{args.nthread}}
+export refgene={{args.refgene | squote}}
+reference {{args.tool | squote}} {{args.ref | squote}}
+"""
 pFastq2Sam.lang               = 'python'
 pFastq2Sam.script             = "file:scripts/fastx/pFastq2Sam.py"

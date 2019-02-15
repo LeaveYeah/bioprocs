@@ -1,308 +1,164 @@
-import unittest, tempfile, shutil, re, mimetypes, sys, testly
-from glob import glob
-from os import makedirs
-from hashlib import md5
-from pyppl import Box
-from six import StringIO, with_metaclass, assertRaisesRegex as sixAssertRaisesRegex
-import inspect, gzip
-from subprocess import Popen, PIPE
-from pyppl import PyPPL, Proc
-from os import path, listdir
-from contextlib import contextmanager
+import re
+import urllib2
+import testly
+import yaml
+from os import path
+from bioprocs.utils import shell
+from bioprocs.utils.tsvio2 import TsvReader
+from tempfile import gettempdir
 
-filedir = None
-config  = {'log': {'file': None, 'level': 'basic', 'lvldiff': ["+P.ARGS", "-DEBUG"]}}
+shbioprocs = shell.Shell(subcmd = True, dash = '-', equal = ' ', duplistkey = False).bioprocs
 
-def _getFiledir():
-	global filedir
-	fn = inspect.getframeinfo(inspect.getouterframes(inspect.currentframe())[2][0])[0]
-	fn = path.basename(fn)
-	fn = fn[4].lower() + fn[5:-3]
-	filedir = path.join(path.realpath(path.dirname(path.dirname(__file__))), 'testfiles', fn)
+PROCDATADIR = path.join(path.dirname(path.abspath(__file__)), 'procdata')
+DATAFILE    = path.join(PROCDATADIR, 'data.yml')
+TMPDIR      = gettempdir()
+CACHED      = {}
 
-_getFiledir()
+def runBioprocs(proc, args):
+	args['config._log.shortpath:py'] = 'False'
+	return shbioprocs[proc](**args).run(save = 'same', uselogger = False)
 
-def getfile (name = '', input = True):
-	return path.join(filedir, 'input' if input else 'expect', name)
+def download(url, savedir = TMPDIR):
+	bname = path.basename(url)
+	destfile = path.join(savedir, bname)
+	filedata = urllib2.open(url)
+	with open(destfile, 'wb') as f:
+		f.write(filtdata.read())
+	return destfile
 
-def getbin (name = ''):
-	return path.join(path.dirname(path.dirname(path.dirname(filedir))), 'bin', name)
+def getlocal(bname, key, datadir = PROCDATADIR):
+	d1, d2 = key.split('.')
+	return path.join(datadir, d1, d2, bname)
 
-def fileOK(predfile, exptfile, test, order=True, comment=None):
-	openfunc = gzip.open if exptfile.endswith('.gz') else open
-	with openfunc(predfile) as fpred, openfunc(exptfile) as fexpt:
-		predlines = [line for line in fpred.read().splitlines() if not comment or not line.startswith(str(comment))]
-		exptlines = [line for line in fexpt.read().splitlines() if not comment or not line.startswith(str(comment))]
-		if order:
-			test.assertEqual(predlines, exptlines)
-		else:
-			test.assertEqual(sorted(predlines), sorted(exptlines))
+def getioval(value, proc = None):
+	if isinstance(value, list):
+		return [getioval(v, proc) for v in value]
+	if not value.startswith('plain:') and not value.startswith('http') and \
+	not value.startswith('ftp') and not value.startswith('file:'):
+		value = 'file:' + value
+	if value in CACHED:
+		return CACHED[value]
+	elif value.startswith('plain:'):
+		return value[7:]
+	elif value.startswith('http') or value.startswith('ftp'):
+		CACHED[value] = download(v)
+		return CACHED[value]
+	elif value.startswith('file:'):
+		return getlocal(value[5:], proc)
+	return value
 
-def fileOKIn(exptfile, msg, test):
-	openfunc = gzip.open if exptfile.endswith('.gz') else open
-	if not isinstance(msg, list):
-		msg = [msg]
-	with openfunc(exptfile) as f:
-		content = f.read()
-		for m in msg:
-			test.assertIn(m, content)
+def getData(datafile = DATAFILE):
+	with open(datafile) as stream:
+		data = yaml.load(stream)
 
-def procOK(proc, name, test, order = True, comment = None):
-	predfile = proc.channel.get()
-	exptfile = getfile(name, False)
-	if path.isfile(predfile):
-		fileOK(predfile, exptfile, test, order, comment)
-	else:
-		for item in listdir(predfile):
-			pfile = path.join(predfile, item)
-			efile = path.join(exptfile, item)
-			if not path.isfile(pfile): continue
-			fileOK(pfile, efile, test, order, comment)
-
-def procOKIn(proc, msg, test):
-	fileOKIn(proc.channel.get(), msg, test)
-
-def cmdOK(cmd, test, inout = None, inerr = None, testrc = True):
-	p = Popen(cmd, stdout = PIPE, stderr = PIPE)
-	out, err = p.communicate()
-	if inout:
-		if not isinstance(inout, list):
-			inout = [inout]
-		for ino in inout:
-			test.assertIn(ino, out)
-	if inerr:
-		if not isinstance(inerr, list):
-			inerr = [inerr]
-		for ine in inerr:
-			test.assertIn(ine, err)
-	if testrc:
-		rc = p.returncode
-		test.assertEqual(rc, 0)
-
-def utilTest(input, script, name, tplenvs, test, args = None):
-	ends = {
-		'.r' : 'Rscript',
-		'.py': 'python'
-	}
-	pTest         = Proc(desc = 'Test utils.', tag=name.split('.')[0])
-	pTest.input   = input
-	pTest.output  = "outfile:file:outfile"
-	pTest.lang    = [ends[k] for k in ends if script.endswith(k)][0]
-	pTest.tplenvs = tplenvs
-	pTest.args    = {} if not args else args
-	pTest.script  = 'file:' + script
-	PyPPL(config).start(pTest).run()
-	procOK(pTest, name, test)
-
-######
-
-@contextmanager
-def captured_output():
-	new_out, new_err = StringIO(), StringIO()
-	old_out, old_err = sys.stdout, sys.stderr
-	try:
-		sys.stdout, sys.stderr = new_out, new_err
-		yield sys.stdout, sys.stderr
-	finally:
-		sys.stdout, sys.stderr = old_out, old_err
-
-def md5sum(fn):
-	ret = md5()
-	with open(fn, "rb") as f:
-		#for chunk in iter(lambda: f.read(4096), b""):
-		#	ret.update(chunk)
-		ret.update(f.read())
-	return ret.hexdigest()
-
-class TestCase(testly.TestCase):
-
-	def assertItemEqual(self, first, second, msg = None):
-		first          = [repr(x) for x in first]
-		second         = [repr(x) for x in second]
-		first          = str(sorted(first))
-		second         = str(sorted(second))
-		assertion_func = self._getAssertEqualityFunc(first, second)
-		assertion_func(first, second, msg=msg)
-
-	def assertDictIn(self, first, second, msg = 'Not all k-v pairs in 1st element are in the second.'):
-		assert isinstance(first, dict)
-		assert isinstance(second, dict)
-		notInkeys = [k for k in first.keys() if k not in second.keys()]
-		if notInkeys:
-			self.fail(msg = 'Keys of first dict not in second: %s' % notInkeys)
-		else:
-			seconds2 = {k:second[k] for k in first.keys()}
-			for k in first.keys():
-				v1   = first[k]
-				v2   = second[k]
-				try:
-					self.assertSequenceEqual(v1, v2)
-				except AssertionError:
-					self.assertEqual(v1, v2)
-
-
-
-	def assertDictNotIn(self, first, second, msg = 'all k-v pairs in 1st element are in the second.'):
-		assert isinstance(first, dict)
-		assert isinstance(second, dict)
-		ret = False
-		for k in first.keys():
-			if k in second:
-				if first[k] != second[k]:
-					ret = True
+	for key, value in data.items():
+		kparts    = key.split('.')
+		tag       = kparts[-1] if len(kparts) > 2 else 'default'
+		proc      = '.'.join(kparts[:2])
+		args      = {'tag': tag}
+		exptfiles = {}
+		opt1      = {}
+		opt2      = {}
+		for k, v in value.items():
+			ret = args
+			if k[:2] in ['i.', 'o.']:
+				v = getioval(v, proc)
+				if k[:2] == 'o.':
+					k = k[2:]
+					exptfiles[k] = v
+				elif isinstance(v, list):
+					args[k + ':list:one'] = v
+				else:
+					args[k] = v
+			elif k.startswith('opt'):
+				ret = opt1 if k.startswith('opt1.') else opt2
+				ret[k[5:]] = v
 			else:
-				ret = True
-		if not ret:
-			self.fail(msg)
+				ret[k] = v
+		yield testly.Data(proc = proc, args = args, exptfiles = exptfiles, opt1 = opt1, opt2 = opt2)
 
-	def assertFileEqual(self, first, second, msg = None):
-		import icdiff
-		import filecmp
-		import sys
-		if not filecmp.cmp(first, second, shallow=False):
-			maxdiff = self.maxDiff or 0
-			origargv = [arg for arg in sys.argv]
-			sys.argv[1:] = ['-L', first, '-L', second, '-U', '1', '--head', str(int(maxdiff))]
-			options = icdiff.get_options()[0]
-			sys.argv = origargv
-			icdiff.diff(first, second, options)
-			msg = msg or ''
-			self.fail('%s\nSet self.maxDiff = None to see all diff.' % msg)
-
-	def assertFileCountEqual(self, first, second, sort = 'sort', msg = None):
-		tmpdir = tempfile.gettempdir()
-		firstsorted  = path.join(tmpdir, path.splitext(path.basename(first))[0] + '.sorted')
-		secondsorted = path.join(tmpdir, path.splitext(path.basename(second))[0] + '.sorted')
-		Popen([sort, '-o', firstsorted, first]).wait()
-		Popen([sort, '-o', secondsorted, second]).wait()
-		import icdiff
-		import filecmp
-		import sys
-		if not filecmp.cmp(firstsorted, secondsorted, shallow=False):
-			maxdiff = self.maxDiff or 0
-			origargv = [arg for arg in sys.argv]
-			sys.argv[1:] = ['-L', first, '-L', second, '-U', '1', '--head', str(int(maxdiff))]
-			options = icdiff.get_options()[0]
-			sys.argv = origargv
-			icdiff.diff(firstsorted, secondsorted, options)
-			msg = msg or ''
-			self.fail('%s\nSet self.maxDiff = None to see all diff.' % msg)
+def getOutput(c):
+	ret = {}
+	for line in c.stderr.splitlines():
+		#[2019-02-06 09:49:48  OUTPUT] pAR: [1/1] outdir => /local2/tmp/m161047/bioprocs.workdir/PyPPL.pAR.notag.6duu519e/1/output/motif_hits-protein_expression_t-gene_expression.AR
+		m = re.match(r'^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}  OUTPUT\] \w+: \[\d+\/\d+\] (\w+) \s*=> (.+)$', line)
+		if not m: continue
+		ret[m.group(1)] = m.group(2)
+	return ret
 
 
-	def assertDirEqual(self, first, second, msg = None):
-		if not path.isdir(first):
-			self.fail('The first file is not a directory.')
-		if not path.isdir(second):
-			self.fail('The second file is not a directory.')
-		for fn in glob(path.join(first, '*')):
-			bn = path.basename(fn)
-			if path.isdir(fn):
-				self.assertDirEqual(fn, path.join(second, bn))
-			else:
-				self.assertFileEqual(fn, path.join(second, bn))
+def istext(filename):
+	import string 
+	with open(filename) as f:
+		s = f.read(512)
+	text_characters = "".join(map(chr, range(32, 127)) + list("\n\r\t\b"))
+	_null_trans = string.maketrans("", "")
+	if not s:
+		# Empty files are considered text
+		return True
+	if "\0" in s:
+		# Files with null bytes are likely binary
+		return False
+	# Get the non-text characters (maps a character to itself then
+	# use the 'remove' option to get rid of the text characters.)
+	t = s.translate(_null_trans, text_characters)
+	# If more than 30% non-text characters, then
+	# this is considered a binary file
+	if float(len(t))/float(len(s)) > 0.30:
+		return False
+	return True
 
-	def assertTextEqual(self, first, second, msg = None):
-		if not isinstance(first, list):
-			first  = first.split('\n')
-		if not isinstance(second, list):
-			second = second.split('\n')
-		self.assertListEqual(first, second, msg)
 
-	def assertRaisesStr(self, exc, s, callable, *args, **kwds):
-		sixAssertRaisesRegex(self, exc, s, callable, *args, **kwds)
-
-	def assertItemSubset(self, s, t, msg = 'The first list is not a subset of the second.'):
-		assert isinstance(s, list)
-		assert isinstance(t, list)
-		self.assertTrue(set(s) < set(t), msg = msg)
-
-	def assertInFile(self, s, f):
-		sf = readFile(f, str)
-		self.assertIn(s, sf)
-
-	def assertBamEqual(self, bam1, bam2, samtools = 'samtools', msg = None):
-		tmpdir = tempfile.gettempdir()
-		sam1   = path.join(tmpdir, path.splitext(bam1)[0] + '.sam')
-		sam2   = path.join(tmpdir, path.splitext(bam2)[0] + '.sam')
-		Popen([samtools, 'view', '-h', '-o', sam1, bam1]).wait()
-		Popen([samtools, 'view', '-h', '-o', sam2, bam2]).wait()
-		import icdiff
-		import filecmp
-		import sys
-		if not filecmp.cmp(sam1, sam2, shallow=False):
-			maxdiff = self.maxDiff or 0
-			origargv = [arg for arg in sys.argv]
-			sys.argv[1:] = ['-L', bam1, '-L', bam2, '-U', '1', '--head', str(int(self.maxDiff))]
-			options = icdiff.get_options()[0]
-			sys.argv = origargv
-			icdiff.diff(sam1, sam2, options)
-			msg = msg or ''
-			self.fail('%s\nSet self.maxDiff = None to see all diff.' % msg)
-
-	def assertBamCountEqual(self, bam1, bam2, samtools = 'samtools', msg = None):
-		
-		import icdiff
-		import filecmp
-		import sys
-		if not filecmp.cmp(sam1, sam2, shallow=False):
-			maxdiff = self.maxDiff or 0
-			origargv = [arg for arg in sys.argv]
-			sys.argv[1:] = ['-L', bam1, '-L', bam2, '-U', '1', '--head', str(int(self.maxDiff))]
-			options = icdiff.get_options()[0]
-			sys.argv = origargv
-			icdiff.diff(sam1, sam2, options)
-			msg = msg or ''
-			self.fail('%s\nSet self.maxDiff = None to see all diff.' % msg)
-
-def assertFileEqual(test, first, second, msg = None):
-	test.longMessage = True
-	if not msg:
-		msg  = '\nFile content not equal: \n'
-		msg += ' - %s\n' % (first) 
-		msg += ' - %s\n' % (second)
-	with open(first) as f1, open(second) as f2:
-		lines1 = f1.read().splitlines()
-		lines2 = f2.read().splitlines()
-	test.assertListEqual(lines1, lines2, msg)
-
-def assertGzFileEqual(test, first, second, msg = None):
-	import gzip 
-	test.longMessage = True
-	if not msg:
-		msg  = '\nFile content not equal: \n'
-		msg += ' - %s\n' % (first) 
-		msg += ' - %s\n' % (second)
-	with gzip.open(first, 'rb') as f1, gzip.open(second, 'rb') as f2:
-		lines1 = f1.read().splitlines()
-		lines2 = f2.read().splitlines()
-	test.assertListEqual(lines1, lines2, msg)
-			
-def assertBamCountEqual(test, first, second, msg = None, ignoreHead = True, samtools = 'samtools'):
-	test.longMessage = True
-	tmpdir = tempfile.gettempdir()
-	sam1   = path.join(tmpdir, path.splitext(first)[0] + '.sam')
-	sam2   = path.join(tmpdir, path.splitext(second)[0] + '.sam')
-	Popen([samtools, 'sort', '-n', '-o', sam1, first]).wait()
-	Popen([samtools, 'sort', '-n', '-o', sam2, second]).wait()
+# unittest asserts
+def assertOrderedStrsInArray(self, strs, array, msg = None):
+	if not self.maxDiff is None:
+		self.maxDiff = max(self.maxDiff or 5000, 5000)
 	
-	if not msg:
-		msg  = '\nBam content not equal: \n'
-		msg += ' - %s\n' % (sam1) 
-		msg += ' - %s\n' % (sam2)
-	with open(sam1) as f1, open(sam2) as f2:
-		lines1 = f1.read().splitlines()
-		lines2 = f2.read().splitlines()
-	if ignoreHead:
-		lines1 = [line for line in lines1 if not line.startswith('@')]
-		lines2 = [line for line in lines2 if not line.startswith('@')]
-	test.assertCountEqual(lines1, lines2, msg)
+	self.assertIsInstance(strs,  list, 'First argument is not a list.')
+	self.assertIsInstance(array, list, 'Second argument is not a list.')
 
-def testdirs(classname):
-	testdir   = path.join(tempfile.gettempdir(), 'bioprocs_unittest', classname)
-	if path.exists(testdir):
-		shutil.rmtree(testdir)
-	makedirs(testdir)
-	parentdir = path.join(path.dirname(path.dirname(__file__)), 'testfiles', classname[4].lower() + classname[5:])
-	indir     = path.join(parentdir, 'input')
-	outdir    = path.join(parentdir, 'expect')
-	return testdir, indir, outdir
+	for s in strs:
+		while array:
+			a = array.pop(0)
+			if s in a:
+				array.append(None)
+				break
+			continue
+		if array: # found
+			continue
+		standardMsg = '%s not in %s' % (testly.util.safe_repr(s, True), testly.util.safe_repr(array, True))
+		self.fail(self._formatMessage(msg, standardMsg))
+
+def assertFileEqual(self, first, second, filetype = None, firstInopts = None, secondInopts = None, msg = None):
+	if not self.maxDiff is None:
+		self.maxDiff = max(self.maxDiff or 5000, 5000)
+
+	filetype1 = filetype or ('text' if istext(first) else 'nontext')
+	filetype2 = filetype or ('text' if istext(second) else 'nontext')
+	if filetype1 != filetype2:
+		standardMsg = 'Files different, because file1 is {0} but file2 is {1}'.format(
+			filetype1, filetype2
+		)
+		self.fail(self._formatMessage(msg, standardMsg))
+	elif filetype1 == 'text':# and filetype2 == 'text':
+		reader1 = TsvReader(first,  **firstInopts)  if firstInopts  else TsvReader(first)
+		reader2 = TsvReader(second, **secondInopts) if secondInopts else TsvReader(second)
+		rindex  = 0
+		for r1 in reader1:
+			rindex += 1
+			try:
+				r2 = next(reader2)
+			except StopIteration:
+				standardMsg = 'File1 and file2 are different.\nFile1: {2}\nFile2: {3}\nRow {0} of file1 is: {1}, but nothing at row {0} of file2.'.format(rindex, r1, first, second)
+				self.fail(self._formatMessage(msg, standardMsg))
+			if r1 != r2:
+				standardMsg = 'File1 and file2 are different.\nFile1: {3}\nFile2: {4}\nRow {0} of file1: {1}\nRow {0} of file2: {2}'.format(rindex, r1, r2, first, second)
+				self.fail(self._formatMessage(msg, standardMsg))
+	else: # filetype1 == 'nontext' and filetype2 == 'nonetext': # binary
+		import filecmp
+		if not filecmp.cmp(first, second, shallow = False):
+			standardMsg = 'Binary files are different:\n{}\n{}'.format(first, second)
+			self.fail(self._formatMessage(msg, standardMsg))
+
+testly.TestCase.assertOrderedStrsInArray = assertOrderedStrsInArray
+testly.TestCase.assertFileEqual = assertFileEqual

@@ -706,3 +706,114 @@ pDiffCorr.args.devpars = Box(height = 2000, width = 2000, res = 300)
 pDiffCorr.envs.rimport = rimport
 pDiffCorr.lang         = params.Rscript.value
 pDiffCorr.script       = "file:scripts/stats/pDiffCorr.r"
+
+"""
+@name:
+	pBootstrap
+@description:
+	Do bootstrapping resampling
+@input:
+	`infile:file`: The input data file
+@output:
+	`outfile:file`: The output file with the bootstrapped statistics values
+		- depends on the `args.stats` function
+	`outdir:dir`: The directory to save the outfile and figures.
+@args:
+	`inopts`:  The options to read the input file. Default: `Box(cnames = True, rnames = True)`
+	`params`:  Other parameters for `boot` function from R `boot` package
+	`nthread`: # of threads(cores) to use. Default: `1`
+	`n`: Sampling how many times? Default: `1000`
+	`stats`: The function to generate statistics for output. Default: `function(x) x`
+		- Default to use all data
+		- This function can return a multiple statistics in a vector
+		- The argument `x` is the data generate for each sampling. 
+		- Unlink the `statistic` argument from `boot`, to make it convenient, we don't put the `index` here.
+	`plot`: Plot the statistics? Default: `all` (plot all statistics)
+		- You may also specify indices. For example: `[1, 2]` to plot the 1st and 2nd statistics
+		- Use `False` or `None` to disable plotting
+	`devpars`: The device parameters for the plot.
+"""
+pBootstrap        = Proc(desc = 'Do bootstrapping')
+pBootstrap.input  = 'infile:file'
+pBootstrap.output = [
+	'outfile:file:{{i.infile | fn2}}.boot/{{i.infile | fn2}}.boot.txt',
+	'outdir:dir:{{i.infile | fn2}}.boot'
+]
+pBootstrap.args.inopts  = Box(cnames = True, rnames = True)
+pBootstrap.args.params  = Box()
+pBootstrap.args.nthread = 1
+pBootstrap.args.n       = 1000
+pBootstrap.args.stats   = 'function(x) x'
+pBootstrap.args.plot    = 'all'
+pBootstrap.args.devpars = Box(height = 2000, width = 2000, res = 300)
+pBootstrap.envs.rimport = rimport
+pBootstrap.lang         = params.Rscript.value
+pBootstrap.script       = "file:scripts/stats/pBootstrap.r"
+
+
+"""
+@name:
+	pPCA
+@description:
+	Perform PCA analysis. Example:
+	```
+	bioprocs stats.pPCA 
+		-i.infile Cellline_t.txt 
+		-i.annofile CLAnno.txt 
+		-args.plots.clplot.repel 
+		-args.plots.clplot.shape 3 
+		-args.plots.clplot.ggs.geom_point 'r:list(aes(shape = Cellline), color = "#2b6edb", data = anno)' 
+		-args.seed 8525 
+		-args.plots.cluster.centers 2 
+		-args.plots.clplot.show-clust-cent 0 
+		-args.plots.cluster.npcs 2
+	```
+@input:
+	`infile:file`: The matrix to do the analysis
+		- Columns are the features
+@output:
+	`outfile:file`: The file with the components
+	`oudir:dir`   : The directory c
+@args:
+	`devpars`: The parameters for device. Default: `{'res': 300, 'height': 2000, 'width': 2000}`
+	`anopts` : The options to read the annotation files.
+	`inopts` : The options to read the input files.
+	`na`     : How to deal with `NA` values. Default: `0`
+		- A logistic/boolean value will remove them (use `complete.cases`)
+		- Otherwise, it will be replaced by the given value.
+	`seed`   : The seed. Default: `None`
+	`plots`  : Use R package `factoextra` to do Plots. You can use `False` for each to disable each plot.
+		- `scree`  : Scree plot, see `?fviz_screeplot`. Default: `Box(ncp = 20`)
+		- `var`    : Var plot, see `?fviz_pca_var`. Default: `Box(repel = False)`
+		- `bi`     : Biplot,   see `?fviz_pca_biplot`. Default: `Box(repel = False)`
+		- `clplot` : Cluster plot, see `?fviz_cluster`. Default: `Box(repel = False, main = "", ggs = Box())`
+			- The extra `ggs` is used to extend the plot. See example in description.
+		- `cluster`: Cluster options for the cluster plot. Default: `Box(npcs  = .8, method = 'kmeans')`
+			- `npcs`: # of PCs to use for clustering. `npcs` < 1 will be treated as variance contribution of PCs. For example, `0.8` will take first N PCs will contribute 80% of variance. Default: `.8`
+			- `method`: Clustering method. Available methods would be `kmeans` and methods supported by `cluster` package.
+			- Other arguments for the clustering function.
+@requires:
+	[`R-factoextra`](https://cran.r-project.org/web/packages/factoextra/index.html) for plots
+"""
+pPCA        = Proc(desc = 'Perform PCA analysis.')
+pPCA.input  = "infile:file, annofile:file"
+pPCA.output = [
+	"outfile:file:{{i.infile | fn2}}.pca/{{i.infile | fn2}}.pcs.txt", 
+	"outdir:dir:{{i.infile | fn2}}.pca"
+]
+pPCA.args.anopts = Box(cnames = True, rnames = True)
+pPCA.args.inopts = Box(cnames = True, rnames = True)
+pPCA.args.na     = 0
+pPCA.args.seed   = None
+pPCA.args.plots  = Box(
+	scree   = Box(ncp = 20),
+	var     = Box(repel = False),
+	bi      = Box(repel = False),
+	cluster = Box(npcs  = .8, method = 'kmeans'),
+	clplot  = Box(repel = False, main = "", ggs = Box())
+)
+pPCA.args.devpars = Box(height = 2000, width = 2000, res = 300)
+pPCA.envs.rimport = rimport
+pPCA.lang         = params.Rscript.value
+pPCA.script       = "file:scripts/stats/pPCA.r"
+

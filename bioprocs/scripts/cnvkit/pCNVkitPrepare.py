@@ -1,6 +1,7 @@
 from os import path
 from pyppl import Box
-from bioprocs.utils import runcmd, cmdargs
+from bioprocs.utils import shell, runcmd, cmdargs
+from bioprocs.utils.reference import bamIndex
 
 infiles = {{i.infiles | repr}}
 exbaits = {{args.exbaits | repr}}
@@ -10,37 +11,39 @@ params  = {{args.params | repr}}
 prefix  = {{i.infiles | fs2name | quote}}
 outdir  = {{job.outdir | quote}}
 cnvkit  = {{args.cnvkit | quote}}
+nthread = {{args.nthread | repr}}
+
+for infile in infiles:
+	bamIndex(infile)
+
+shell.TOOLS['cnvkit'] = cnvkit
+envs = dict(
+	OPENBLAS_NUM_THREADS = str(nthread),
+	OMP_NUM_THREADS      = str(nthread),
+	NUMEXPR_NUM_THREADS  = str(nthread),
+	MKL_NUM_THREADS      = str(nthread)
+)
+ckshell = shell.Shell(subcmd = True, equal = ' ', envs = envs, cwd = outdir).cnvkit
 
 # generate target file
-cmd        = '{cnvkit} target {baitfile} {params}'
 params_t   = params.target
 params_t.o = path.join(outdir, prefix + '.bed')
-runcmd(cmd.format(
-	cnvkit   = cnvkit,
-	baitfile = repr(exbaits),
-	params   = cmdargs(params_t, equal = ' ')
-))
+ckshell.target(exbaits, **params_t).run()
 
 # generate access file
 if not accfile:
 	accfile = path.join(outdir, prefix + '.access.bed')
-	cmd = '{cnvkit} access {ref} {params}'
 	params_a = params.access
 	params_a.o = accfile
-	runcmd(cmd.format(
-		cnvkit = cnvkit,
-		ref    = repr(ref),
-		params = cmdargs(params_a, equal = ' ')
-	))
+	ckshell.access(ref, **params_a).run()
 
 # autobin
-cmd = 'cd {outdir}; {cnvkit} autobin {bams} {params}'
 params_b = params.autobin
 params_b.t = params_t.o
 params_b.g = accfile
-runcmd(cmd.format(
-	outdir = str(repr(outdir)),
-	cnvkit = cnvkit,
-	bams   = ' '.join([str(repr(infile)) for infile in infiles]),
-	params = cmdargs(params_b, equal = ' ')
-))
+params_b[''] = infiles
+runcmd('cd {wdir}; {cnvkit} autobin {args}'.format(
+	wdir   = shell.shquote(outdir),
+	cnvkit = shell.shquote(cnvkit),
+	args   = cmdargs(params_b, equal = ' ')
+), env = envs)

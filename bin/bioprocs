@@ -3,7 +3,7 @@
 The main program entrance for bioprocs binaries.
 """
 
-import re, imp
+import re
 import inspect
 import sys
 import bioprocs
@@ -11,13 +11,17 @@ from os import path, listdir
 from glob import glob
 from collections import OrderedDict
 from pyppl import PyPPL, utils, Channel
-from pyppl.parameters import commands, HelpAssembler, COLORS
+from pyppl.parameters import commands, HelpAssembler, Fore, Back, Style
 from tempfile import gettempdir
 
 METHODS   = None
 SCRIPTS   = None
 PROCESSES = None
 MAIN      = None
+# the length of process names in listing them
+PROCLEN   = 50
+# the length of the separator of each module in listing them
+SEPLEN    = 86
 
 ASSEMBLER = HelpAssembler(theme = 'default')
 
@@ -45,7 +49,7 @@ def highlight(origin, q, incase = True):
 		occurs = [m.start() for m in re.finditer(q, origin)]
 	lengths = [len(q)] * len(occurs)
 	return substr_replace(origin, occurs, lengths, [
-		'{}{}{}'.format(COLORS.red + COLORS.bold, origin[occur:occur+length], COLORS.end)
+		'{}{}{}'.format(Fore.RED + Style.BRIGHT, origin[occur:occur+length], Style.RESET_ALL)
 		for occur, length in zip(occurs, lengths)])
 
 class Methods(object):
@@ -95,34 +99,22 @@ class Methods(object):
 		else:
 			procs = Main._getProcesses()
 		
-		ret = []
+		ret = ['']
 		for module, ps in procs.items():
+			ret.append('-' * SEPLEN)
 			moddoc = Main.getModuleDoc(module)
 			if not moddoc:
 				moddoc = ['[ Module not documented. ]']
 			seplen = 0
 			for i, mdoc in enumerate(moddoc):
-				if i == 0:
-					ret.append(
-						ASSEMBLER.title('module') + ' ' + \
-						ASSEMBLER.prog(module) + ' - ' +   \
-						ASSEMBLER.optdesc(mdoc)
-					)
-				else:
-					ret.append(
-						' ' * (11 + len(module)) + \
-						ASSEMBLER.optdesc(mdoc)
-					)
-				seplen = max(seplen, 11 + len(module) + len(mdoc))
-			ret.append('-' * seplen)
-
-			pnlen = max([len(pname) for pname in ps.keys()]) + len(module) + 1
+				msg = module.ljust(PROCLEN) + mdoc if i == 0 else ' ' * PROCLEN + mdoc
+				ret.append(ASSEMBLER.error(msg, withPrefix = False))
+			
 			for pname, proc in ps.items():
-				ret.append(
-					ASSEMBLER.prog('- ' + (module + '.' + pname).ljust(pnlen) + ': ') + \
-					ASSEMBLER.optdesc(proc.proc.desc)
-				)
+				pnname = ('    ' + module + '.' + pname + ': ').ljust(PROCLEN)
+				ret.append(ASSEMBLER.prog(pnname) + ASSEMBLER.optdesc(proc.proc.desc))
 			ret.append('')
+		ret.append('-' * SEPLEN)
 
 		sys.stdout.write('\n'.join(ret) + '\n')
 
@@ -341,6 +333,8 @@ class Script(Command):
 
 class Process(Command):
 
+	HELPOPTS = ['h', 'H']
+
 	def __init__(self, name, prog = None):
 		prog = prog or path.basename(sys.argv[0]) + ' ' + name
 		super(Process, self).__init__(name, prog)
@@ -348,11 +342,14 @@ class Process(Command):
 		self.procfile = path.join(path.dirname(bioprocs.__file__), self.module + '.py')
 		if not path.isfile(self.procfile):
 			raise ValueError('No such module: {}'.format(self.module))
-
-		self.proc = getattr(
-			__import__('bioprocs.' + self.module, fromlist = ['bioprocs']), 
-			self.procname
-		)
+		
+		try:
+			self.proc = getattr(
+				__import__('bioprocs.' + self.module, fromlist = ['bioprocs']), 
+				self.procname
+			)
+		except AttributeError:
+			raise AttributeError('Module {!r} does not have such process: {!r}'.format(self.module, self.procname))
 
 	def getDocstr(self):
 		with open(self.procfile) as f:
@@ -362,9 +359,9 @@ class Process(Command):
 			r'(\"\"\"|\'\'\')\s+@name:\s+' + self.procname + r'\s+@description:\s+([\s\S]+?)\1'
 		)
 		docstr = regex.search(content)
-
+		
 		if not docstr or 'Alias of' in docstr.group(2):
-			alias = docstr.group(2)
+			alias = docstr.group(2) if docstr else None
 			docstr = ''
 			docstr += '@name:\n'
 			docstr += '	{}\n'.format(self.procname)
@@ -414,7 +411,7 @@ class Process(Command):
 	def helpitems(self, blocks):
 		
 		def tokendefault(desc, token):
-			return [desc[:desc.index(token)] + HelpAssembler().theme['default'] + desc[desc.index(token):] + COLORS.end]
+			return [desc[:desc.index(token)] + HelpAssembler().theme['default'] + desc[desc.index(token):] + Style.RESET_ALL]
 
 		def sepdefault(desc):
 			desc = desc.replace('    ', '  ').replace('\t', '  ')
@@ -502,6 +499,9 @@ class Process(Command):
 				'Such as {prefix}config._log.file'.format(prefix = prefix)
 			)
 		]
+		ret['other arguments'] = [
+			(', '.join(prefix + h for h in Process.HELPOPTS), '', 'Print this help page.')
+		]
 		return ret
 
 	def createPipeline(self, **kwargs):
@@ -545,6 +545,9 @@ class Process(Command):
 		outkeys = {outkey.split(':')[0]:outkey.split(':')[1] for outkey in outdata.keys()}
 
 		for key, val in kwargs.items():
+			if key in Process.HELPOPTS:
+				self.help(printNexit = True)
+
 			# proc attributes
 			if '.' not in key:
 				setattr(self.proc, key, val)
@@ -672,13 +675,23 @@ class Main(object):
 		else:
 			methods = Main.getMethods()
 			scripts = Main.getScripts()
-			if self.command in methods:
+			if not self.command:
+				self.help(printNexit = True)
+			elif self.command in methods:
 				obj = methods[self.command]
 			elif self.command in scripts:
 				obj = scripts[self.command]
 			else:
-				error = '' if not self.command else 'No such method or script: {!r}'.format(self.command)
-				self.help(error = error, printNexit = True)
+				try:
+					processes = Main._getProcesses(self.command)
+					msg  = 'No such method or script: {!r}. \n'.format(self.command)
+					msg += '    I guess it\'s a module, listing its processes:\n'
+					sys.stderr.write(ASSEMBLER.warning(msg))
+					obj = methods['list']
+					self.args['_'] = [self.command]
+				except ImportError:
+					msg  = 'No such method, script or module: {!r}. \n         '.format(self.command)
+					self.help(error = msg, printNexit = True)
 
 		args = self.args.copy()
 		del args['_']

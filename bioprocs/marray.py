@@ -3,7 +3,7 @@ from os import path
 from glob import glob
 from pyppl import Proc, Box
 #from .utils import plot, txt, dirnamePattern
-from .rnaseq import pBatchEffect, pCoexp, pExprPlot
+from .rnaseq import pBatchEffect, pCoexp, pExprStats
 from .utils import dirpat2name
 from . import params, rimport
 
@@ -31,7 +31,7 @@ from . import params, rimport
 """
 pCELDir2Matrix                  = Proc(desc = 'Merge expression files to a matrix.')
 pCELDir2Matrix.input            = "indir:file, sifile:file"
-pCELDir2Matrix.output           = "outfile:file:{{i.indir, args.pattern | dirpat2name}}.expr.txt"
+pCELDir2Matrix.output           = "outfile:file:{{i.indir, args.pattern | *dirpat2name}}.expr.txt"
 pCELDir2Matrix.lang             = params.Rscript.value
 pCELDir2Matrix.args.fn2sample   = 'function(fn) unlist(strsplit(fn, ".", fixed = T))[1]'
 pCELDir2Matrix.args.pattern     = '*'

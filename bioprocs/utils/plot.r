@@ -95,21 +95,22 @@ plot.stack = function(data, plotfile, x = 'ind', y = 'values', ggs = list(), dev
 	plot.xy(data, plotfile, x = x, y = y, ggs = ggs, devpars = devpars)
 }
 
-# plot the ROC curve
-# see: https://cran.r-project.org/web/packages/plotROC/vignettes/examples.html
-# @params:
-#	`data`: The data for plotting.
-#		- If stacked, then there should be only 3 columns: D, M, name
-#		- Else the 1st column should be D, and rest are `<M1>, <M2>, ...`
-#		- D must be binary.
-#	`plotfile`: The file to save the plot.
-#	`stacked` : Whether the data is stacked(melt). See `data`
-#	`params`  : The parameters for plotting. 
-#		- `returnAUC`: Return list of AUC values of this function
-#		- `showAUC`  : Show AUC on the plot
-#		- `combine`  : Combine the ROC in one plot?
-#		- `labels`   : Show some values on the curve for some cutting points
-plot.roc = function(data, plotfile, stacked = F, params = list(returnAUC = T, showAUC = T, combine = T, labels = F), ggs = list(), devpars = list(res = 300, width = 2000, height = 2000)) {
+
+plot.roc = function(data, plotfile = NULL, stacked = F, params = list(returnAUC = T, showAUC = T, combine = T, labels = F), ggs = list(), devpars = list(res = 300, width = 2000, height = 2000)) {
+	# plot the ROC curve
+	# see: https://cran.r-project.org/web/packages/plotROC/vignettes/examples.html
+	# @params:
+	#	`data`: The data for plotting.
+	#		- If stacked, then there should be only 3 columns: D, M, name
+	#		- Else the 1st column should be D, and rest are `<M1>, <M2>, ...`
+	#		- D must be binary.
+	#	`plotfile`: The file to save the plot.
+	#	`stacked` : Whether the data is stacked(melt). See `data`
+	#	`params`  : The parameters for plotting. 
+	#		- `returnAUC`: Return list of AUC values of this function
+	#		- `showAUC`  : Show AUC on the plot
+	#		- `combine`  : Combine the ROC in one plot?
+	#		- `labels`   : Show some values on the curve for some cutting points
 	require('plotROC')
 
 	if (stacked) {
@@ -117,8 +118,12 @@ plot.roc = function(data, plotfile, stacked = F, params = list(returnAUC = T, sh
 			stop('Expect 3 columns (D, M, name) in stacked data to plot ROC.')
 		colnames(data) = c('D', 'M', 'name')
 	} else {
-		data = melt_roc(data, 1, 2:ncol(data))
-		colnames(data) = c('D', 'M', 'name')
+		if (ncol(data) > 2) {
+			data = melt_roc(data, 1, 2:ncol(data))
+			colnames(data) = c('D', 'M', 'name')
+		} else {
+			data = data.frame(D = data[, 1], M = data[, 2], name = colnames(data)[2])
+		}
 	}
 	cnames = levels(factor(data$name))
 
@@ -151,7 +156,7 @@ plot.roc = function(data, plotfile, stacked = F, params = list(returnAUC = T, sh
 			if (length(cnames) >= 2) {
 				p = p + scale_color_discrete(name = "", breaks = cnames, labels = auclabels)
 			} else {
-				p = p + annotate("text", x = .9, y = .1, label = paste('AUC', unlist(aucs), sep = ' = '))
+				p = p + annotate("text", x = .9, y = .1, label = paste('AUC', round(unlist(aucs), 3), sep = ' = '))
 				p = p + scale_color_discrete(guide = F)
 			}
 		}
@@ -182,20 +187,14 @@ plot.roc = function(data, plotfile, stacked = F, params = list(returnAUC = T, sh
 	}
 }
 
-plot.scatter = function(data, plotfile, x = 1, y = 2, params = list(), ggs = list(), devpars = list(res = 300, width = 2000, height = 2000)) {
+plot.scatter = function(data, plotfile = NULL, x = 1, y = 2, params = list(), ggs = list(), devpars = list(res = 300, width = 2000, height = 2000)) {
 	ggs = c(list(geom_point = params), ggs)
 	plot.xy(data, plotfile, x, y, ggs, devpars)
 }
-
-plot.col = function(data, plotfile, x = 1, y = 2, params = list(), ggs = list(), devpars = list(res = 300, width = 2000, height = 2000)) {
-	ggs = c(list(geom_col = params), ggs)
-	plot.xy(data, plotfile, x, y, ggs, devpars)
-}
-
 # alias
 plot.points = plot.scatter
 
-plot.boxplot = function(data, plotfile, x = 1, y = 2, stacked = T, params = list(), ggs = list(), devpars = list(res=300, width=2000, height=2000)) {
+plot.col = function(data, plotfile = NULL, x = 1, y = 2, stacked = TRUE, params = list(), ggs = list(), devpars = list(res = 300, width = 2000, height = 2000)) {
 	if (stacked) {
 		cnames = colnames(data)
 		cnames = make.names(cnames)
@@ -206,7 +205,38 @@ plot.boxplot = function(data, plotfile, x = 1, y = 2, stacked = T, params = list
 		if (is.numeric(y)) {
 			y = cnames[y]
 		}
-		params = update.aes(params, aes_string(group = x))
+		params$stat = list.get(params, 'stat', 'identity')
+
+		ggs = c(
+			list(geom_bar = params),
+			list(theme = list(axis.title.x = element_blank(), axis.text.x = element_text(angle = 60, hjust = 1))),
+			ggs
+		)
+		plot.xy(data, plotfile, x, y, ggs, devpars)
+	} else {
+		ggs = c(
+			list(geom_bar = params),
+			list(theme = list(axis.title.x = element_blank(), axis.text.x = element_text(angle = 60, hjust = 1))),
+			ggs
+		)
+		plot.stack(data, plotfile, ggs = ggs, devpars = devpars)
+	}
+}
+# alias
+plot.bar = plot.col
+
+plot.boxplot = function(data, plotfile = NULL, x = 1, y = 2, stacked = TRUE, params = list(), ggs = list(), devpars = list(res=300, width=2000, height=2000)) {
+	if (stacked) {
+		cnames = colnames(data)
+		cnames = make.names(cnames)
+		colnames(data) = cnames
+		if (is.numeric(x)) {
+			x = cnames[x]
+		}
+		if (is.numeric(y)) {
+			y = cnames[y]
+		}
+		#params = update.aes(params, aes_string(group = x))
 
 		ggs = c(
 			list(geom_boxplot = params),
@@ -221,6 +251,23 @@ plot.boxplot = function(data, plotfile, x = 1, y = 2, stacked = T, params = list
 			ggs
 		)
 		plot.stack(data, plotfile, ggs = ggs, devpars = devpars)
+	}
+}
+
+plot.heatmap2 = function(data, plotfile = NULL, params = list(), draw = list(), devpars = list(res=300, width=2000, height=2000)) {
+	library(ComplexHeatmap)
+
+	params$matrix = data
+	hm = do.call(Heatmap, params)
+
+	if (is.logical(plotfile) && !plotfile) {
+		return(hm)
+	} else if (is.null(plotfile)) {
+		do.call(ComplexHeatmap::draw, c(list(hm), draw))
+	} else {
+		do.call(png, c(list(filename=plotfile), devpars))
+		do.call(ComplexHeatmap::draw, c(list(hm), draw))
+		dev.off()
 	}
 }
 
@@ -389,6 +436,40 @@ plot.maplot = function(data, plotfile, threshold, ggs = list(), devpars = list(r
 	plot.scatter(data, plotfile, x = 'A', y = 'M', params = params, ggs = ggs, devpars = devpars)
 }
 
+plot.qq = function(data, plotfile, x = NULL, y = 1, stacked = TRUE, params = list(), ggs = list(), devpars = list()) {
+	if (!stacked) {
+		data = stack(as.data.frame(data))
+	}
+	if (!is.null(plotfile)) {
+		do.call(png, c(list(filename=plotfile), devpars))
+	}
+	cnames = colnames(data)
+	cnames = make.names(cnames)
+	colnames(data) = cnames
+	if (is.numeric(x)) x = sprintf("`%s`", cnames[x])
+	if (is.numeric(y)) y = sprintf("`%s`", cnames[y])
+	if (!is.null(x)) {
+		params = list(mapping = aes_string(theoretical = x, sample = y))
+	} else {
+		params = list(mapping = aes_string(sample = y))
+	}
+
+	p = ggplot(data)
+	p = p + do.call(geom_qq, params)
+	p = p + do.call(geom_qq_line, params)
+	print(apply.ggs(p, ggs))
+	if (!is.null(plotfile)) {
+		dev.off()
+	}
+}
+
+# data:
+# 		cat1	cat2	cat3
+# item1	1		0		1
+# item2	1		1		0
+# item3	0		1		1
+# item4	1		0		0
+# item5	1		0		1
 plot.venn = function(data, plotfile, params = list(), devpars = list(res=300, width=2000, height=2000)) {
 	library(VennDiagram)
 	rnames = rownames(data)
@@ -451,12 +532,11 @@ plot.volplot = function(data, plotfile, fccut = 2, pcut = 0.05, ggs = list(), de
 	fdrcutlabel = round(fdrcut, 3)
 	fdrcut      = -log10(fdrcut)
 
-	threshold = as.factor(abs(logfc) > logfccut & fdr > fdrcut)
-
 	xm = min(max(abs(logfc)), 10)
 	ym = min(max(fdr), 15)
 	if (xm <= logfccut) logfccut = 1
 
+	threshold = as.factor(abs(logfc) > logfccut & fdr > fdrcut)
 	data = data.frame(logfc, fdr, threshold)
 
 	ggs = c(list(
@@ -470,8 +550,69 @@ plot.volplot = function(data, plotfile, fccut = 2, pcut = 0.05, ggs = list(), de
 		geom_text  = list(x = +logfccut, y = ym, label = paste0('+', logfccut, ' ', 'fold'),  vjust = 1, hjust = -0.1, color="red3"),
 		theme      = list(legend.position = "none"),
 		xlab       = list('log2 Fold Change'),
-		ylab       = list('-log10(Pvalue)')
+		ylab       = list('-log10(p-value)')
 	), ggs)
 
 	plot.xy(data, plotfile, x = 'logfc', y = 'fdr', ggs = ggs, devpars = devpars)
+}
+
+plot.man = function(data, plotfile = NULL, hilights = list(), ggs = list(), devpars = list(res=300, width=2000, height=2000)) {
+	# manhattan plot
+	# data is a data frame of
+	# Chr, Pos, P[, Region]
+	# Rownames should be snp name
+	# The region is used to divide the plot, in case
+	# all snps are on the same chromosome
+
+	library(data.table)
+	data = as.data.table(data)
+	if (ncol(data) == 4) {
+		colnames(data) = c('Snp', 'Chr', 'Pos', 'P')
+		data$Region = data$Chr
+	} else if (ncol(data) == 5) {
+		colnames(data) = c('Snp', 'Chr', 'Pos', 'P', 'Region')
+	} else {
+		stop('Expect a data frame of 4 or 5 columns to do manhattan plot.')
+	}
+	# calculate the x axis for each snp, position on each chromsome should be accumulated.
+	# min and max pos for each chr
+	chrlen = data[, .(minPos = min(Pos), maxPos = max(Pos)), by = Chr][, .(Chr, minPos, maxPos, cumPos = shift(cumsum(maxPos), 1, fill = 0))]
+	# add it back to data
+	data = merge(data, chrlen, by = "Chr")
+	data[, X:= Pos + cumPos][, Y:=-log10(P)]
+
+	# get region centers
+	rdata = data[, .(Region, centerPos = (min(X) + max(X))/2), by = Region]
+	# fix the order
+	data$Region = factor(data$Region, levels = unique(data$Region))
+	# hilight
+	# 1. rows, color, ... or
+	# 2. chr, start, end, color
+	ggs_hilight = list()
+	hinames = names(hilights)
+	if (!is.null(hinames)) {
+		hilights = list(hilights)
+	}
+	for (hilight in hilights) {
+		if ('snps' %in% names(hilight)) {
+			hdata = data[Snp %in% hilight$snps]
+			color = ifelse(is.null(hilight$color), "red", hilight$color)
+			ggs_hilight = c(ggs_hilight, list(geom_point = list(aes_string(x = 'X', y = 'Y'), color = color, data = hdata, inherit.aes = FALSE)))
+		} else if ('chr' %in% names(hilight)) {
+			hdata = data[Chr == hilight$chr & Pos >= as.numeric(hilight$start) & Pos <= as.numeric(hilight$end)]
+			color = ifelse(is.null(hilight$color), "red", hilight$color)
+			ggs_hilight = c(ggs_hilight, list(geom_point = list(aes_string(x = 'X', y = 'Y'), color = color, data = hdata, inherit.aes = FALSE)))
+		} 
+	}
+	ggs = c(list(
+		geom_point         = list(aes_string(color = 'Region'), alpha = .8),
+		guides             = list(color = FALSE),
+		scale_color_manual = list(values = rep(c("grey", "skyblue"), nrow(rdata))),
+		scale_y_continuous = list(expand = c(0, 0)),
+		scale_x_continuous = list(expand = expand_scale(mult = c(0.01, 0.01)), label = rdata$Region, breaks= rdata$centerPos),
+		theme_bw           = list(),
+		theme              = list(panel.grid.minor = element_blank(), panel.grid.major.x = element_blank()),
+		labs               = list(x = "", y = "-log10(p-value)")
+		), ggs_hilight, ggs)
+	plot.xy (data, plotfile, x = 'X', y = 'Y', ggs = ggs, devpars = devpars)
 }

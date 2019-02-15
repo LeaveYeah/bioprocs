@@ -30,7 +30,8 @@ A2.bam	NORMAL	A
 B1.bam	TUMOR	A
 B2.bam	NORMAL	A
 """
-
+params.nthread        = 1
+params.nthread.desc   = 'Use multithreading if possible.'
 params.exdir.required = True
 params.exdir.desc     = 'Where to export the result files.'
 params.runner         = 'local'
@@ -108,13 +109,13 @@ else:
 	starts.append(pBamDir)
 
 if 'germ' in params.muts:
-	pBam2Gmut.depends = pBamDir
-	pBam2Gmut.input   = lambda ch: ch.expand(0, "*.bam")
-	pBam2Gmut.exdir   = path.join(params.exdir, 'germline')
+	pBam2Gmut.depends      = pBamDir
+	pBam2Gmut.input        = lambda ch: ch.expand(0, "*.bam")
+	pBam2Gmut.exdir        = path.join(params.exdir, 'germline')
 if 'soma' in params.muts:
-	pBamPair2Smut.depends = pBamDir
-	pBamPair2Smut.input   = lambda ch: saminfo.toChannel(ch.get(), paired = True)
-	pBamPair2Smut.exdir   = path.join(params.exdir, 'somatic')
+	pBamPair2Smut.depends      = pBamDir
+	pBamPair2Smut.input        = lambda ch: saminfo.toChannel(ch.get(), paired = True)
+	pBamPair2Smut.exdir        = path.join(params.exdir, 'somatic')
 if 'scnv' in params.muts:
 	aBam2SCNV.on('plots')
 	aBam2SCNV.pBamDir.depends   = pBamDir
@@ -129,7 +130,11 @@ if 'gcnv' in params.muts:
 	starts.append(aBam2GCNV)
 	
 config = {
-	'default': {'forks': int(params.forks), 'ppldir': params.ppldir},
+	'default': {
+		'forks' : int(params.forks),
+		'ppldir': params.ppldir,
+		'args'  : {'nthread': params.nthread}
+	},
 	'_log' : {'file': params.logfile}
 }
 

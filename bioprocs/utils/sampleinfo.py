@@ -1,5 +1,6 @@
+from os import path
 from bioprocs.utils import alwaysList
-from bioprocs.utils.tsvio import TsvReader, TsvRecord
+from bioprocs.utils.tsvio2 import TsvReader, TsvRecord
 
 class SampleInfoException(Exception):
 	pass
@@ -10,17 +11,16 @@ class SampleInfo (object):
 	TUMOR_GROUP  = ['TUMOR', 'DISEASE', 'AFTER', 'TISSUE', 'POST', 'TREATMENT']
 
 	def __init__(self, sfile):
-		reader    = TsvReader(sfile, ftype = 'head')
-		self.samcol = reader.meta.keys()[0]
+		reader    = TsvReader(sfile)
+		self.samcol = reader.cnames[0]
 		if self.samcol == 'ROWNAMES':
 			self.samcol = 'Sample'
-			del reader.meta['ROWNAMES']
-			reader.meta.prepend('Sample')
+			reader.cnames[0] = 'Sample'
 
 		self.data = reader.dump()
 		self.nrow = len(self.data)
-		self.ncol = len(reader.meta)
-		self.colnames = reader.meta.keys()
+		self.ncol = len(reader.cnames)
+		self.colnames = reader.cnames
 		self.rownames = [row[self.samcol] for row in self.data]
 
 		expectColnames = ['Sample', 'Patient', 'Group', 'Batch']
@@ -107,5 +107,88 @@ class SampleInfo (object):
 				else:
 					dataframe[key] = [val]
 		return DataFrame(data = dataframe, index = rownames)
+
+
+class SampleInfo2(object):
+
+	def _read(self, sifile):
+		standard_cnames = ["", "Sample", "Patient", "Group", "Batch"]
+		reader          = TsvReader(sifile)
+		
+		self.cnames     = reader.cnames
+		if not self.cnames:
+			raise SampleInfoException('Headers for sample information file is required.')
+		
+		if any(cname not in standard_cnames for cname in  self.cnames):
+			raise SampleInfoException('Headers should be a subset of {!r}'.format(', '.join(standard_cnames)))
+
+		if "" in self.cnames:
+			self.cnames[self.cnames.index("")] = "Sample"
+		
+		self.mat = reader.dump()
+
+	def __init__(self, sifile, checkPaired = False):
+		self.mat    = None
+		self.cnames = []
+		self._read(sifile)
+		if checkPaired and "Patient" in self.cnames:
+			for patient in self.allPatients():
+				if len(self.getSamples(by = 'Patient', value = patient)) != 2:
+					raise SampleInfoException('Expect paired comparisons, but Patient {!r} has # samples other than 2.'.format(patient))
+
+	def allPatients(self):
+		if 'Patient' not in self.cnames:
+			return None
+		return list(set([r.Patient for r in self.mat]))
+
+	def allGroups(self):
+		allgroups = [r.Group for r in self.mat]
+		group0    = self.mat[0].Group
+		return [group0] + list(set(group for group in allgroups if group != group0))
+
+	def getSamples(self, by = None, value = None, returnAll = False):
+		if by and by not in self.cnames:
+			raise SampleInfoException('{!r} is not a valid column name.'.format(by))
+		if not by:
+			return [r if returnAll else r.Sample for r in self.mat]
+		return [r if returnAll else r.Sample for r in self.mat if r[by] == value]
+
+	def sampleInfo(self, sample, info = None):
+		if not info:
+			return [r for r in self.mat if r.Sample == sample]
+		if info not in self.cnames:
+			raise SampleInfoException('{!r} is not a valid column name.'.format(info))
+		return [r[info] for r in self.mat if r.Sample == sample]
+
+	def select(self, samples):
+		self.mat = [r for r in self.mat if r.Sample in samples]
+
+	def isPaired(self):
+		allpatients = self.allPatients()
+		if not allpatients:
+			return False
+		for patient in allpatients:
+			if len(self.getSamples(by = 'Patient', value = patient)) != 2:
+				return False
+		return True
+
+	def getPairedSample(self, sample):
+		patient = self.sampleInfo(sample, info = 'Patient')[0]
+		samples = self.getSamples(by = 'Patient', value = patient)
+		return samples[1 - samples.index(sample)]
+
+	def getPairedSamples(self, datadir = None):
+		patients = self.allPatients()
+		groups   = self.allGroups()
+		ret = []
+		for patient in patients:
+			samples = self.getSamples(by = 'Patient', value = patient, returnAll = True)
+			s1 = path.join(datadir, samples[0].Sample) if datadir else samples[0].Sample
+			s2 = path.join(datadir, samples[1].Sample) if datadir else samples[1].Sample
+			if samples[0].Group == groups[0]:
+				ret.append((s1, s2))
+			else:
+				ret.append((s2, s1))
+		return ret
 
 

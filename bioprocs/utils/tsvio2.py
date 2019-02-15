@@ -156,6 +156,7 @@ class TsvReader(object):
 		
 		self.file.seek(tell)
 		self.tell = tell
+		self.meta = self.cnames
 
 	def next(self):
 		line = self.file.readline()
@@ -170,7 +171,7 @@ class TsvReader(object):
 		return record
 
 	def dump(self, col = None):
-		if not col:
+		if col is None:
 			return list(self)
 		if not isinstance(col, list):
 			return [r[col] for r in self]

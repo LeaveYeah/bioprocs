@@ -1,3 +1,4 @@
+# Utilities of cnvkit
 from pyppl import Proc, Box
 from . import params
 from .utils import fs2name
@@ -19,6 +20,7 @@ from .utils import fs2name
 		- See https://github.com/AstraZeneca-NGS/reference_data/tree/master/hg19/bed
 	`accfile`: Directly use the access file. Default: generating from the reference file.
 		- See https://github.com/etal/cnvkit/tree/master/data
+	`nthread`: The number of threads to use. Default: 1
 	`ref`    : The reference genome.
 	`params` : The extra parameters for cnvkit's `access`, `target` and `autobin` command. Default: 
 		```python
@@ -37,6 +39,7 @@ pCNVkitPrepare.output = 'target:file:{{i.infiles | fs2name}}.target.bed, antitar
 pCNVkitPrepare.args.cnvkit  = params.cnvkit.value
 pCNVkitPrepare.args.exbaits = params.exbaits.value
 pCNVkitPrepare.args.accfile = ''
+pCNVkitPrepare.args.nthread = 1
 pCNVkitPrepare.args.ref     = params.ref.value
 pCNVkitPrepare.args.params  = Box(
 	target  = Box({'short-name': True, 'split': True}),
@@ -86,6 +89,7 @@ pCNVkitCov.script       = "file:scripts/cnvkit/pCNVkitCov.py"
 @args:
 	`ref`   :  The reference file.
 	`cnvkit`:  The executable of cnvkit. Default: 'cnvkit.py'
+	`nthread`: The number of threads to use. Default: 1
 	`params`:  Other parameters for `cnvkit.py reference`, default: " --no-edge "
 @requires:
 	[CNVkit](http://cnvkit.readthedocs.io/)
@@ -95,6 +99,7 @@ pCNVkitRef.input        = "infiles:files"
 pCNVkitRef.output       = "outfile:file:{{i.infiles | fs2name}}.reference.cnn"
 pCNVkitRef.args.cnvkit  = params.cnvkit.value
 pCNVkitRef.args.ref     = params.ref.value
+pCNVkitRef.args.nthread = 1
 pCNVkitRef.args.params  = Box({'no-edge': True})
 pCNVkitRef.envs.fs2name = fs2name
 pCNVkitRef.lang         = params.python.value
@@ -279,6 +284,7 @@ pCNVkitHeatmap.input        = 'cnfiles:files'
 pCNVkitHeatmap.output       = 'outdir:dir:{{i.cnfiles | fs2name}}.heatmaps'
 pCNVkitHeatmap.args.cnvkit  = params.cnvkit.value
 pCNVkitHeatmap.args.params  = Box()
+pCNVkitHeatmap.args.nthread = 1
 pCNVkitHeatmap.args.regions = [
 	'', # plot whole genome
 	# extra regions, format: chr5:100-50000000
@@ -334,43 +340,40 @@ pCNVkitReport.script = 'file:scripts/cnvkit/pCNVkitReport.py'
 	`outfile:file`: The vcf file
 @args:
 	`cnvkit`:   The executable of cnvkit. Default: 'cnvkit.py'
+	`nthread`: The number of threads to use. Default: 1
 	`params`:   Other params for `cnvkit.py export`
 @requires:
 	[CNVkit](http://cnvkit.readthedocs.io/)
 """
-pCNVkit2Vcf             = Proc (desc = 'Output vcf file for cnvkit results')
-pCNVkit2Vcf.input       = "cnsfile:file"
-pCNVkit2Vcf.output      = "outfile:file:{{i.cnsfile | fn}}.cnvkit.vcf"
-pCNVkit2Vcf.args.cnvkit = params.cnvkit.value
-pCNVkit2Vcf.args.params = Box()
-pCNVkit2Vcf.lang        = params.python.value
-pCNVkit2Vcf.script      = 'file:scripts/cnvkit/pCNVkit2Vcf.py'
+pCNVkit2Vcf              = Proc (desc = 'Output vcf file for cnvkit results')
+pCNVkit2Vcf.input        = "cnsfile:file"
+pCNVkit2Vcf.output       = "outfile:file:{{i.cnsfile | fn}}.cnvkit.vcf"
+pCNVkit2Vcf.args.cnvkit  = params.cnvkit.value
+pCNVkit2Vcf.args.nthread = 1
+pCNVkit2Vcf.args.params  = Box()
+pCNVkit2Vcf.lang         = params.python.value
+pCNVkit2Vcf.script       = 'file:scripts/cnvkit/pCNVkit2Vcf.py'
 
 """
 @name:
 	pCNVkit2Theta
 @description:
-	Conver the results to THetA2 input and run THetA2.
+	Convert the results to THetA2 interval input.
 @input:
 	`cnsfile:file`: The cns file
 	`cnnfile:file`: The reference cnn file or the cnr file for paired Normal sample. Could be empty.
-	`snvfile:file`: The VCF file of somatic mutations call from paired samples. Could be empty.
 @output:
-	`outdir:dir`: The output directory
+	`outfile:file`: The interval file for THetA2
 @args:
 	`nthread` : Number threads to use. Default: `1`
 	`cnvkit`  : The executable of cnvkit. Default: `cnvkit.py`
-	`theta`   : The executable of THetA2. Default: `RunTHetA.py`
-	`ckparams`: Other params for `cnvkit.py export theta`
-	`ttparams`: Other params for `RunTHetA.py`. Default: `Box(BAF=True, FORCE=True, n=2)`
+	`params`  : Other params for `cnvkit.py export theta`
 """
-pCNVkit2Theta               = Proc(desc = 'Conver the results to THetA2 input and run THetA2.')
-pCNVkit2Theta.input         = 'cnsfile:file, cnnfile:file, snvfile:file'
-pCNVkit2Theta.output        = 'outdir:dir:{{i.cnsfile | fn2}}.theta'
-pCNVkit2Theta.args.nthread  = 1
-pCNVkit2Theta.args.ckparams = Box()
-pCNVkit2Theta.args.ttparams = Box(BAF = True, FORCE = True, n = 2)
-pCNVkit2Theta.args.cnvkit   = params.cnvkit.value
-pCNVkit2Theta.args.theta    = params.theta2.value
-pCNVkit2Theta.lang          = params.python.value
-pCNVkit2Theta.script        = 'file:scripts/cnvkit/pCNVkit2Theta.py'
+pCNVkit2Theta              = Proc(desc = 'Convert the results to THetA2 interval input.')
+pCNVkit2Theta.input        = 'cnsfile:file, cnnfile:file'
+pCNVkit2Theta.output       = 'outfile:file:{{i.cnsfile | fn2}}.interval.txt'
+pCNVkit2Theta.args.nthread = 1
+pCNVkit2Theta.args.params  = Box()
+pCNVkit2Theta.args.cnvkit  = params.cnvkit.value
+pCNVkit2Theta.lang         = params.python.value
+pCNVkit2Theta.script       = 'file:scripts/cnvkit/pCNVkit2Theta.py'
